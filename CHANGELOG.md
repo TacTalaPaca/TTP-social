@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5
+
+- Restored standalone install mode.
+- Removed fullscreen display from the manifest.
+- Kept a single manifest without manifest system bar colors.
+- Kept the theme-color meta and color-scheme meta in sync with the active theme.
+- Updated the service worker cache to `koinara-1.5`.
+
 ## 1.4
 
 - Renamed the manifest to `manifest.json` and kept a single manifest file.

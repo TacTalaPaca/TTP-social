@@ -46,8 +46,8 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - The mobile layout uses a floating tab bar and a distinct touch experience.
 - Hover effects only on devices that can hover. Touch devices get active feedback instead.
 - The Chromium scrollbar is a thin overlay that takes no layout space. Firefox keeps its native thin scrollbar.
-- Keep one manifest. Do not set manifest system bar colors or add manifest variants.
-- Android Chrome PWAs cannot make the system navigation bar transparent. The installed app uses fullscreen to hide the system bars.
+- Keep one manifest in standalone mode. Do not set manifest system bar colors or add manifest variants.
+- Android Chrome PWAs cannot make the system navigation bar transparent. Use the theme-color and color-scheme metas so the system bars follow the active theme.
 - Keep the color-scheme meta and the root color scheme in sync with the selected theme for browser mode.
 - First and last rows in every list get a divider. Dividers stay quiet and consistent.
 
