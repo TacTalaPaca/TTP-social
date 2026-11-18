@@ -46,8 +46,9 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - The mobile layout uses a floating tab bar and a distinct touch experience.
 - Hover effects only on devices that can hover. Touch devices get active feedback instead.
 - The Chromium scrollbar is a thin overlay that takes no layout space. Firefox keeps its native thin scrollbar.
-- The installed app system bars follow the app theme. Keep the manifest theme color transparent and update the theme-color meta with the selected theme.
-- Keep the color-scheme meta and the root color scheme in sync with the selected theme so system bar icons stay legible.
+- Keep one manifest. Do not set manifest system bar colors or add manifest variants.
+- Android Chrome PWAs cannot make the system navigation bar transparent. The installed app uses fullscreen to hide the system bars.
+- Keep the color-scheme meta and the root color scheme in sync with the selected theme for browser mode.
 - First and last rows in every list get a divider. Dividers stay quiet and consistent.
 
 ## Navigation and layers
@@ -208,6 +209,6 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - `seed.js`: demo users, follows, posts, chats, replies.
 - `icons.js`: bundled Lucide subset.
 - `sw.js`: offline cache.
-- `manifest.webmanifest`: install metadata.
+- `manifest.json`: install metadata.
 - `assets/`: bundled font, icons, and AVIF photos.
 - `CHANGELOG.md`: version history.

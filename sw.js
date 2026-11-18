@@ -1,5 +1,5 @@
 // Koinara service worker. Cache the whole demo for offline use.
-const CACHE = 'koinara-1.3';
+const CACHE = 'koinara-1.4';
 
 const CORE = [
   './',
@@ -8,7 +8,7 @@ const CORE = [
   './app.js',
   './seed.js',
   './icons.js',
-  './manifest.webmanifest',
+  './manifest.json',
   './assets/fonts/atkinson-hyperlegible-next.woff2',
   './assets/fonts/OFL.txt',
   './assets/icons/LICENSE',
@@ -106,7 +106,7 @@ self.addEventListener('fetch', (e) => {
   // App code and styles: always try the network first, so a deploy is picked
   // up on the next load. Images and fonts: cache first, refresh in the
   // background for the load after.
-  const shell = /\.(?:html|js|css|webmanifest)$/.test(url.pathname) || url.pathname.endsWith('/');
+  const shell = /\.(?:html|js|css|json)$/.test(url.pathname) || url.pathname.endsWith('/');
 
   if (shell) {
     e.respondWith(

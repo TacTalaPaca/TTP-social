@@ -1,8 +1,16 @@
 # Changelog
 
+## 1.4
+
+- Renamed the manifest to `manifest.json` and kept a single manifest file.
+- Removed manifest theme and background colors so the installed app does not paint a system bar background.
+- Switched the installed app display to fullscreen so Android hides the system navigation and status bars.
+- Kept the theme-color meta and color-scheme meta in sync with the active theme for browser mode.
+- Updated the service worker cache to `koinara-1.4`.
+
 ## 1.3
 
-- Made the installed Android system navigation bar transparent through the manifest theme color.
+- Set a transparent manifest theme color for the Android system navigation bar.
 - Kept the browser theme color in sync with the selected light or dark theme.
 - Updated the page color scheme at runtime so system bar icons follow the app theme.
 - Refined page transitions to slide and fade with vertical motion on desktop and more horizontal movement on mobile.

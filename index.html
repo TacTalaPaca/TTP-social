@@ -9,16 +9,7 @@
 <meta name="format-detection" content="telephone=no">
 <meta name="theme-color" content="#f4f4f1">
 <meta name="color-scheme" content="light dark">
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="assets/icons/icon.svg" type="image/svg+xml">
-<link rel="mask-icon" href="assets/icons/icon.svg" color="#12120f">
-<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Koinara">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="preload" href="assets/fonts/atkinson-hyperlegible-next.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="app.css">
+<link rel="manifest" href="manifest.json">
 <script>
   // Set the theme before first paint so there is no flash.
   (function () {
@@ -37,6 +28,15 @@
     } catch (e) {}
   })();
 </script>
+<link rel="icon" href="assets/icons/icon.svg" type="image/svg+xml">
+<link rel="mask-icon" href="assets/icons/icon.svg" color="#12120f">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Koinara">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preload" href="assets/fonts/atkinson-hyperlegible-next.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="app.css">
 </head>
 <body>
 <div id="app">
@@ -64,7 +64,7 @@
             <button class="textbtn" type="button" id="demo-btn">Use demo account</button>
           </form>
           <div class="login-foot" aria-hidden="true">
-            <span>Offline ready</span><i></i><span data-version>V1.3</span>
+            <span>Offline ready</span><i></i><span data-version>V1.4</span>
           </div>
         </div>
       </div>
