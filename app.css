@@ -32,11 +32,13 @@
   --r-sm: 4px;
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
-  --t-fast: 120ms;
   --t-mid: 190ms;
-  --t-slow: 250ms;
+  --t-page: 340ms;
+  --t-layer: 280ms;
+
   --ease: cubic-bezier(.22, .78, .2, 1);
   --ease-out: cubic-bezier(.16, 1, .3, 1);
+  --ease-page: cubic-bezier(.32, .72, 0, 1);
   color-scheme: light;
 }
 
@@ -158,7 +160,7 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .shell { position: absolute; inset: 0; }
-.views { position: absolute; inset: 0; }
+.views { position: absolute; inset: 0; overflow: hidden; }
 
 .view {
   position: absolute;
@@ -166,33 +168,38 @@ input, textarea, [contenteditable="true"], .selectable {
   overflow-y: auto;
   overflow-x: hidden;
   background: var(--bg);
+  visibility: hidden;
+  pointer-events: none;
   padding-bottom: calc(100px + var(--safe-b));
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
   overscroll-behavior-x: none;
   backface-visibility: hidden;
 }
-.view.swiping, .view.tab-enter, .view.tab-leave { will-change: transform, opacity; }
-.view.tab-enter { z-index: 2; animation: tabEnter var(--t-mid) var(--ease) both; }
-.view.tab-leave { z-index: 1; pointer-events: none; animation: tabLeave var(--t-mid) var(--ease) both; }
+.view.is-active { visibility: visible; pointer-events: auto; }
+.view.tab-enter, .view.tab-leave { visibility: visible; will-change: transform, opacity; }
+.view.tab-enter { z-index: 2; animation: tabEnter var(--t-page) var(--ease-page) both; }
+.view.tab-leave { z-index: 1; pointer-events: none; animation: tabLeave var(--t-page) var(--ease-page) both; }
 .view.tab-enter.back { animation-name: tabEnterBack; }
 .view.tab-leave.back { animation-name: tabLeaveBack; }
 
 @keyframes tabEnter {
-  from { transform: translate3d(16px, 0, 0); }
-  to { transform: none; }
+  from { opacity: 0; transform: translate3d(48px, 0, 0); }
+  to { opacity: 1; transform: none; }
 }
 @keyframes tabLeave {
-  from { transform: none; }
-  to { transform: translate3d(-12px, 0, 0); }
+  0% { opacity: 1; transform: none; }
+  55% { opacity: 0; transform: translate3d(-20px, 0, 0); }
+  100% { opacity: 0; transform: translate3d(-20px, 0, 0); }
 }
 @keyframes tabEnterBack {
-  from { transform: translate3d(-16px, 0, 0); }
-  to { transform: none; }
+  from { opacity: 0; transform: translate3d(-48px, 0, 0); }
+  to { opacity: 1; transform: none; }
 }
 @keyframes tabLeaveBack {
-  from { transform: none; }
-  to { transform: translate3d(12px, 0, 0); }
+  0% { opacity: 1; transform: none; }
+  55% { opacity: 0; transform: translate3d(20px, 0, 0); }
+  100% { opacity: 0; transform: translate3d(20px, 0, 0); }
 }
 
 .topbar {
@@ -1397,7 +1404,7 @@ html.custom-scroll .view { scrollbar-gutter: auto; }
   color: var(--fg);
   pointer-events: auto;
   transform: translate3d(100%, 0, 0);
-  transition: transform var(--t-slow) var(--ease), opacity var(--t-mid) ease-out;
+  transition: transform var(--t-layer) var(--ease), opacity var(--t-mid) ease-out;
   opacity: .98;
   will-change: transform;
   backface-visibility: hidden;
@@ -1854,7 +1861,18 @@ html.custom-scroll .view { scrollbar-gutter: auto; }
 }
 
 @media (min-width: 900px) {
-  :root { --gutter: 28px; }
+  :root {
+    --gutter: 28px;
+    --t-page: 420ms;
+    --t-layer: 330ms;
+
+  }
+
+  .view.tab-enter { animation-name: tabEnterDesk; }
+  .view.tab-leave { animation-name: tabLeaveDesk; }
+  .view.tab-enter.back { animation-name: tabEnterDeskBack; }
+  .view.tab-leave.back { animation-name: tabLeaveDeskBack; }
+
 
   html:not(.authed) .frame { max-width: 560px; }
   .frame { max-width: 1040px; }
@@ -1882,6 +1900,31 @@ html.custom-scroll .view { scrollbar-gutter: auto; }
   .profile-top { padding-top: 30px; }
   .toast { bottom: calc(28px + var(--safe-b)); }
 }
+
+@keyframes tabEnterDesk {
+  from { opacity: 0; transform: translate3d(0, 48px, 0); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tabLeaveDesk {
+  0% { opacity: 1; transform: none; }
+  55% { opacity: 0; transform: translate3d(0, -20px, 0); }
+  100% { opacity: 0; transform: translate3d(0, -20px, 0); }
+}
+@keyframes tabEnterDeskBack {
+  from { opacity: 0; transform: translate3d(0, -48px, 0); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tabLeaveDeskBack {
+  0% { opacity: 1; transform: none; }
+  55% { opacity: 0; transform: translate3d(0, 20px, 0); }
+  100% { opacity: 0; transform: translate3d(0, 20px, 0); }
+}
+
+@keyframes swapIn {
+  from { opacity: 0; transform: translate3d(0, 5px, 0); }
+  to { opacity: 1; transform: none; }
+}
+.swap-in { animation: swapIn 170ms var(--ease-out) both; }
 
 @media (any-hover: hover) {
   .post:hover { background: color-mix(in srgb, var(--hover) 55%, transparent); }

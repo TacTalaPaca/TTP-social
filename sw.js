@@ -1,5 +1,5 @@
 // Koinara service worker. Cache the whole demo for offline use.
-const CACHE = 'koinara-v14';
+const CACHE = 'koinara-v15';
 
 const CORE = [
   './',
@@ -10,6 +10,8 @@ const CORE = [
   './icons.js',
   './manifest.webmanifest',
   './assets/fonts/atkinson-hyperlegible-next.woff2',
+  './assets/fonts/OFL.txt',
+  './assets/icons/LICENSE',
   './assets/icons/icon.svg',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png',

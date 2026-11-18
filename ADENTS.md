@@ -175,6 +175,17 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - Do not add marketing copy to the interface.
 - Keep labels short and literal.
 
+## Repository and publishing
+
+- The project uses the PolyForm Noncommercial License 1.0.0 in `LICENSE`.
+- Do not change the license without the owner's approval.
+- Keep `README.md`, `VERSION`, and `CHANGELOG.md` current. The required notice lives in `README.md`.
+- Publishing is manual. Do not push, deploy, or publish unless the owner explicitly asks.
+- After the initial repository setup, the owner controls all publishing.
+- Keep the public repository free of private data, tokens, local test artifacts, and editor files.
+- The public repository is `TTP-social`. The product name remains Koinara for now.
+- Third-party assets must keep their license files in `assets/fonts/OFL.txt` and `assets/icons/LICENSE`.
+
 ## Versioning and commits
 
 - The project uses a `1.x` version model.

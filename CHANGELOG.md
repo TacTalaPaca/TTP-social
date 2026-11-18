@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2
+
+- Added the PolyForm Noncommercial 1.0.0 license, README, and repository metadata.
+- Improved desktop page transitions with a slower fade and lift.
+- Tuned mobile page transitions for a clearer, less rushed release.
+- Added a subtle content swap for profile tab changes.
+- Expanded the web app manifest with shortcuts, display overrides, launch handling, and language metadata.
+- Added install-state handling so the Install app row disappears when running installed.
+- Moved the visible version to a single app constant.
+- Added repository readiness files and third-party license notices.
+- Renamed the public repository to TTP-social.
+- Removed the duplicate AGENTS.md symlink. ADENTS.md is the single rules file.
+- Updated the service worker cache.
+
 ## 1.1
 
 - Reworked mobile viewport sizing so browser chrome and the on-screen keyboard no longer change the app scale.

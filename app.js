@@ -3,6 +3,7 @@
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 const KEY = 'koinara.v1';
+const APP_VERSION = '1.2';
 const hadStateOnBoot = (() => { try { return localStorage.getItem(KEY) !== null; } catch (e) { return false; } })();
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = (p = 'x') => p + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -83,7 +84,7 @@ function normalizeCrop(c) {
   let x = Number(c.x);
   let y = Number(c.y);
   let z = Number(c.z);
-  // Older posts stored object-position percentages (0…100).
+  // Older posts stored object-position percentages (0 to 100).
   if (Math.abs(x) > 1.001 || Math.abs(y) > 1.001) {
     x = (clamp(x, 0, 100) - 50) / 50;
     y = (clamp(y, 0, 100) - 50) / 50;
@@ -301,7 +302,7 @@ function myComments() {
 function commentItem({ reply, post }) {
   const u = user(post.userId);
   const text = (post.text || 'Photo post').trim();
-  const excerpt = text.length > 140 ? text.slice(0, 140).trimEnd() + '…' : text;
+  const excerpt = text.length > 140 ? text.slice(0, 140).trimEnd() + '...' : text;
   return `<button class="comment-item" type="button" data-act="open" data-id="${post.id}">
     <div class="comment-top"><span>On a post by ${esc(u.name)}</span><time datetime="${new Date(reply.ts).toISOString()}" data-ts="${reply.ts}">${rel(reply.ts)}</time></div>
     <div class="comment-text">${esc(reply.text)}</div>
@@ -579,17 +580,6 @@ function carouselGo(car, index, animate = true) {
     track.classList.remove('animating');
   }
   track.style.transform = `translate3d(${-target * width}px, 0, 0)`;
-}
-
-function layoutCarousels(root = document) {
-  $$('[data-carousel]', root).forEach((car) => {
-    const track = car.querySelector('.carousel-track');
-    if (!track) return;
-    const width = track.clientWidth || car.clientWidth;
-    if (!width) return;
-    track.style.transition = 'none';
-    track.style.transform = `translate3d(${-(car._index || 0) * width}px, 0, 0)`;
-  });
 }
 
 function wireCarousels(root = document) {
@@ -1157,6 +1147,7 @@ let navIndex = 0;
 let navApplying = false;
 let navRebuilding = false;
 let tabTimer = 0;
+let tabTransitioning = false;
 
 const isTextInput = (el) => !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
 
@@ -1260,7 +1251,12 @@ function bindKeyboard() {
    sidebar, which stays usable for switching views. */
 function syncInert() {
   const blocked = layers.length > 0;
-  $$('.view').forEach((v) => { v.inert = blocked; });
+  $$('.view').forEach((v) => {
+    const active = v.dataset.view === currentTab;
+    v.classList.toggle('is-active', active);
+    v.setAttribute('aria-hidden', String(!active));
+    v.inert = blocked || !active;
+  });
   const bar = $('.tabbar');
   if (bar) bar.inert = blocked;
   layers.forEach((entry, i) => { entry.el.inert = i < layers.length - 1; });
@@ -1294,7 +1290,7 @@ function activeScroller() {
 }
 
 function updateScrollbar() {
-  if (!document.documentElement.classList.contains('custom-scroll')) {
+  if (tabTransitioning || !document.documentElement.classList.contains('custom-scroll')) {
     scrollIndicator.classList.remove('on');
     return;
   }
@@ -1607,7 +1603,7 @@ function closeVisual(entry, immediate = false) {
     entry.cleanup = null;
   }
   if (immediate) entry.el.remove();
-  else setTimeout(() => entry.el.remove(), 300);
+  else setTimeout(() => entry.el.remove(), matchMedia('(min-width: 900px)').matches ? 360 : 310);
 }
 
 function closeAllLayers({ animate = true, restore = true } = {}) {
@@ -1877,7 +1873,7 @@ function openPeopleList(id, kind) {
     if (!people.length) {
       results.innerHTML = '<p class="empty">Nobody here yet.</p>';
     } else if (!found.length) {
-      results.innerHTML = `<p class="empty">No people found for “${esc(input.value.trim())}”.</p>`;
+      results.innerHTML = `<p class="empty">No people found for "${esc(input.value.trim())}".</p>`;
     } else {
       results.innerHTML = found.map(personRow).join('');
     }
@@ -2321,7 +2317,7 @@ function openCompose(restore) {
     photoHint.hidden = attachments.length > 0;
     ratioBtn.textContent = ratioLabel(ratio);
     ratioBtn.disabled = !attachments.length;
-    count.textContent = busy ? 'Optimising…' : area.value.length + '/500';
+    count.textContent = busy ? 'Optimising...' : area.value.length + '/500';
     publish.disabled = busy > 0 || (!area.value.trim() && attachments.length === 0);
     discard.disabled = !area.value.trim() && !attachments.length && !tags.length;
     syncPreviewMeta();
@@ -2898,7 +2894,7 @@ function openEdit(restore) {
     const file = e.target.files && e.target.files[0];
     e.target.value = '';
     if (!file) return;
-    toast('Optimising photo…');
+    toast('Optimising photo...');
     const im = await compressImage(file, 512, .86);
     if (!im) { toast("That photo didn't load."); return; }
     if (closed) { discardMedia(im.m); return; }
@@ -2938,6 +2934,7 @@ function removeAvatar() {
 
 function openSettings() {
   const t = state.theme;
+  const installed = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
   mountLayer(`
     ${layerHead('Settings')}
     <div class="layer-body">
@@ -2953,10 +2950,10 @@ function openSettings() {
       <button class="row" type="button" data-act="comments">${icon('lock')} Comments<span class="chev">${icon('chevron-right')}</span></button>
       <div class="setting-h">App</div>
       <button class="row" type="button" data-act="shortcuts">${icon('keyboard')} Keyboard shortcuts<span class="chev">${icon('chevron-right')}</span></button>
-      <button class="row" type="button" data-act="install">${icon('download')} Install app<span class="chev">${icon('chevron-right')}</span></button>
+      ${installed ? '' : `<button class="row" type="button" data-act="install">${icon('download')} Install app<span class="chev">${icon('chevron-right')}</span></button>`}
       <button class="row" type="button" data-act="reset">${icon('rotate-ccw')} Reset demo<span class="chev">${icon('chevron-right')}</span></button>
       <button class="row" type="button" data-act="logout">${icon('log-out')} Sign out<span class="chev">${icon('chevron-right')}</span></button>
-      <p class="fineprint pad">Koinara 1.1. A text-first social demo.</p>
+      <p class="fineprint pad">Koinara ${APP_VERSION}. A text-first social demo.</p>
     </div>
   `, { cls: 'settings-layer', descriptor: { type: 'settings' } });
 }
@@ -3057,6 +3054,14 @@ const viewEl = (name) => $('#view-' + name);
 
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+function swapIn(el) {
+  if (!el || reducedMotion()) return;
+  el.classList.remove('swap-in');
+  void el.offsetWidth;
+  el.classList.add('swap-in');
+  setTimeout(() => el.classList.remove('swap-in'), 210);
+}
+
 function switchTab(name, opts = {}) {
   const view = viewEl(name);
   if (!view) return false;
@@ -3079,12 +3084,10 @@ function switchTab(name, opts = {}) {
   currentTab = name;
 
   $$('.view').forEach((v) => {
-    if (v !== view && v !== prev) v.hidden = true;
     v.classList.remove('tab-enter', 'tab-leave', 'back');
     v.style.transform = '';
     v.style.opacity = '';
   });
-  view.hidden = false;
 
   const top = opts.top ? 0 : (opts.scroll != null ? opts.scroll : (ui.scrolls[name] || 0));
   view.scrollTop = top;
@@ -3096,8 +3099,12 @@ function switchTab(name, opts = {}) {
     else b.removeAttribute('aria-current');
   });
 
-  if (prev && opts.animate !== false && !opts.noAnimate && !reducedMotion()) {
-    prev.hidden = false;
+  syncInert();
+  tabTransitioning = true;
+  scrollIndicator.classList.remove('on');
+
+  const animate = prev && opts.animate !== false && !opts.noAnimate && !reducedMotion();
+  if (animate) {
     prev.classList.add('tab-leave');
     view.classList.add('tab-enter');
     if (direction === 'back') {
@@ -3106,16 +3113,16 @@ function switchTab(name, opts = {}) {
     }
     clearTimeout(tabTimer);
     tabTimer = setTimeout(() => {
-      if (currentTab !== prevName) prev.hidden = true;
+      tabTransitioning = false;
       prev.classList.remove('tab-leave', 'back');
       view.classList.remove('tab-enter', 'back');
-    }, 240);
-  } else if (prev) {
-    prev.hidden = true;
+      scheduleScrollbar();
+    }, matchMedia('(min-width: 900px)').matches ? 440 : 360);
+  } else {
+    tabTransitioning = false;
+    scheduleScrollbar();
   }
 
-  scheduleScrollbar();
-  requestAnimationFrame(() => layoutCarousels(view));
   return true;
 }
 
@@ -3224,6 +3231,7 @@ addEventListener('beforeinstallprompt', (e) => {
 
 addEventListener('appinstalled', () => {
   deferredPrompt = null;
+  document.documentElement.classList.add('standalone');
   toast('Koinara installed');
 });
 
@@ -3235,7 +3243,7 @@ function installApp() {
     deferredPrompt.userChoice.then(() => { deferredPrompt = null; }).catch(() => {});
     return;
   }
-  toast('Open the browser menu and choose “Add to Home Screen”.');
+  toast('Open the browser menu and choose "Add to Home Screen".');
 }
 
 /* ------------------------------------------------------------------ events */
@@ -3286,7 +3294,13 @@ function bindEvents() {
       case 'profile': openProfileById(id); break;
       case 'chat': openChat(id); break;
       case 'edit': openEdit(); break;
-      case 'ptab': profileTab = el.dataset.v; ui.profileTab = profileTab; saveUI(); renderProfile(); break;
+      case 'ptab':
+        profileTab = el.dataset.v;
+        ui.profileTab = profileTab;
+        saveUI();
+        renderProfile();
+        swapIn($('#profile-body'));
+        break;
       case 'theme': setTheme(el.dataset.v); break;
       case 'install': installApp(); break;
       case 'reset':
@@ -3608,8 +3622,17 @@ function registerSW() {
 
 function boot() {
   if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  const standaloneQuery = matchMedia('(display-mode: standalone)');
+  const syncStandalone = () => {
+    document.documentElement.classList.toggle('standalone', !!(standaloneQuery.matches || navigator.standalone));
+  };
+  syncStandalone();
+  if (standaloneQuery.addEventListener) standaloneQuery.addEventListener('change', syncStandalone);
+  else if (standaloneQuery.addListener) standaloneQuery.addListener(syncStandalone);
   applyTheme();
   injectIcons();
+  $$('.view').forEach((v) => { v.hidden = false; });
+  $$('[data-version]').forEach((el) => { el.textContent = 'V' + APP_VERSION; });
   bindEvents();
   initViewport();
 

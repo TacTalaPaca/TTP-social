@@ -81,7 +81,7 @@ function seedState() {
     { id: 'p39', userId: 'dario', ts: t(340), likes: 31, text: `Every map is an argument about what matters.`, tags: ['transit', 'design'] },
     { id: 'p40', userId: 'mira', ts: t(70), likes: 42, text: `The kettle, the window, the same chair. A whole day can be this small.`, images: [im('p15', 'A quiet corner with a white chair and a potted plant')], tags: ['home', 'slow', 'morning'] },
     { id: 'p41', userId: 'mira', ts: t(540), likes: 23, text: `Mended the sleeve instead of replacing the shirt. Three winters older now.`, tags: ['making', 'home'] },
-    { id: 'p42', userId: 'eli', ts: t(210), likes: 38, text: `Found a note in a returned book: “page 84, if you get here.” I got here.`, tags: ['books', 'library', 'memory'] },
+    { id: 'p42', userId: 'eli', ts: t(210), likes: 38, text: `Found a note in a returned book: "page 84, if you get here." I got here.`, tags: ['books', 'library', 'memory'] },
     { id: 'p43', userId: 'eli', ts: t(880), likes: 26, text: `Archive smell is just time with the dust left in.`, tags: ['library', 'slow'] },
     { id: 'p44', userId: 'sana', ts: t(420), likes: 29, text: `The best interview was twenty minutes of silence and one good question.`, tags: ['radio', 'quiet'] },
     { id: 'p45', userId: 'sana', ts: t(1320), likes: 17, text: `Editing audio is mostly deciding what to leave out. Like most things.`, tags: ['radio', 'craft'] },
