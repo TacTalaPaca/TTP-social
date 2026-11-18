@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover, interactive-widget=resizes-content">
+<title>Koinara</title>
+<meta name="description" content="A text-first social demo by TacTalaPaca.">
+<meta name="theme-color" content="#f4f4f1">
+<meta name="color-scheme" content="light dark">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Koinara">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preload" href="assets/fonts/atkinson-hyperlegible-next.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="app.css">
+<script>
+  // Set the theme before first paint so there is no flash.
+  (function () {
+    try {
+      var s = JSON.parse(localStorage.getItem('koinara.v1') || '{}');
+      var t = s.theme || 'auto';
+      var dark = t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      if (s.auth) document.documentElement.classList.add('authed');
+      var m = document.querySelector('meta[name="theme-color"]');
+      if (m) m.content = dark ? '#0b0b0a' : '#f4f4f1';
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+<div id="app">
+  <div class="frame" id="frame">
+
+    <section id="login" class="login" aria-label="Sign in">
+      <div class="login-grid" aria-hidden="true"></div>
+      <div class="login-shell">
+        <div class="login-panel">
+          <div class="login-tag" aria-hidden="true">Quiet social · 001</div>
+          <div class="mark-wrap"><div class="mark" aria-hidden="true">K</div></div>
+          <h1 class="wordmark">koinara</h1>
+          <p class="tagline byline">by TacTalaPaca</p>
+          <p class="login-meta">Text · Photos · No algorithm</p>
+          <form id="login-form" class="login-form" novalidate>
+            <div class="login-field">
+              <label class="lbl" for="login-id">Email or handle</label>
+              <input class="field" id="login-id" name="email" type="text" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="you@example.com">
+            </div>
+            <div class="login-field">
+              <label class="lbl" for="login-pass">Password</label>
+              <input class="field" id="login-pass" name="password" type="password" autocomplete="current-password" placeholder="Anything works">
+            </div>
+            <button class="btn block login-submit" type="submit">Enter Koinara <span data-icon="arrow-right"></span></button>
+            <button class="textbtn" type="button" id="demo-btn">Use demo account</button>
+          </form>
+          <div class="login-foot" aria-hidden="true">
+            <span>Offline ready</span><i></i><span>V1.1</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div id="shell" class="shell" hidden>
+      <aside class="sidebar" aria-label="Koinara">
+        <div class="side-head">
+          <button class="wordmark side-logo" type="button" data-tab="feed" aria-label="Koinara home">koinara</button>
+          <p class="side-by">by TacTalaPaca</p>
+        </div>
+
+        <nav class="sidenav" aria-label="Primary">
+          <button class="sidenav-item" type="button" data-tab="feed" aria-keyshortcuts="1">
+            <span data-icon="newspaper"></span><span>Feed</span>
+          </button>
+          <button class="sidenav-item" type="button" data-tab="explore" aria-keyshortcuts="2">
+            <span data-icon="compass"></span><span>Explore</span>
+          </button>
+          <button class="sidenav-item" type="button" data-tab="chat" aria-keyshortcuts="3">
+            <span data-icon="message-square"></span><span>Chat</span><span class="side-dot" id="side-unread" hidden></span>
+          </button>
+          <button class="sidenav-item" type="button" data-tab="profile" aria-keyshortcuts="4">
+            <span data-icon="user"></span><span>Profile</span>
+          </button>
+        </nav>
+
+        <button class="btn side-compose" type="button" data-act="compose" aria-keyshortcuts="n">
+          <span data-icon="plus"></span>New post
+        </button>
+      </aside>
+
+      <main id="views" class="views">
+        <section class="view" id="view-feed" data-view="feed" aria-label="Feed">
+          <header class="topbar feed-topbar">
+            <span class="wordmark sm mobile-only" id="feed-top">koinara</span>
+            <button class="icon-btn mobile-only" type="button" data-act="compose" aria-label="New post" data-icon="plus"></button>
+          </header>
+          <div id="feed-list" class="list"></div>
+        </section>
+
+        <section class="view search-view" id="view-explore" data-view="explore" aria-label="Explore" hidden>
+          <div class="searchbar">
+            <span class="search-ic" data-icon="search"></span>
+            <input class="field search" id="explore-search" type="search" placeholder="Search posts, people, #tags" autocomplete="off" autocapitalize="none" spellcheck="false" aria-label="Search posts, people, and tags">
+          </div>
+          <div id="explore-body"></div>
+        </section>
+
+        <section class="view bare" id="view-chat" data-view="chat" aria-label="Chat" hidden>
+          <div id="chat-list" class="list"></div>
+        </section>
+
+        <section class="view bare" id="view-profile" data-view="profile" aria-label="Profile" hidden>
+          <div id="profile-body"></div>
+        </section>
+
+        <div id="layers" class="layers"></div>
+        <div id="scroll-indicator" class="scroll-indicator" aria-hidden="true"><div class="scroll-thumb"></div></div>
+      </main>
+
+      <nav class="tabbar" aria-label="Primary">
+        <button class="tab" type="button" data-tab="feed" aria-current="page" aria-keyshortcuts="1">
+          <span data-icon="newspaper"></span><span class="tab-label">Feed</span>
+        </button>
+        <button class="tab" type="button" data-tab="explore" aria-keyshortcuts="2">
+          <span data-icon="compass"></span><span class="tab-label">Explore</span>
+        </button>
+        <button class="tab" type="button" data-tab="chat" aria-keyshortcuts="3">
+          <span data-icon="message-square"></span><span class="tab-label">Chat</span><span class="tab-dot" id="tab-unread" hidden></span>
+        </button>
+        <button class="tab" type="button" data-tab="profile" aria-keyshortcuts="4">
+          <span data-icon="user"></span><span class="tab-label">Profile</span>
+        </button>
+      </nav>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </div>
+</div>
+<script src="seed.js" defer></script>
+<script src="icons.js" defer></script>
+<script src="app.js" defer></script>
+</body>
+</html>
