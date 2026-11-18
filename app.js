@@ -3,7 +3,7 @@
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 const KEY = 'koinara.v1';
-const APP_VERSION = '1.5';
+const APP_VERSION = '1.6';
 const hadStateOnBoot = (() => { try { return localStorage.getItem(KEY) !== null; } catch (e) { return false; } })();
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = (p = 'x') => p + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -454,8 +454,16 @@ async function ensureAvatarData() {
     if (!blob) return;
     a.d = await blobToDataURL(blob);
     saveNow();
+    const feed = viewEl('feed');
+    const profile = viewEl('profile');
+    const feedTop = feed ? feed.scrollTop : 0;
+    const profileTop = profile ? profile.scrollTop : 0;
     renderProfile();
     renderFeed();
+    requestAnimationFrame(() => {
+      if (feed) feed.scrollTop = feedTop;
+      if (profile) profile.scrollTop = profileTop;
+    });
   } catch (e) {}
 }
 
@@ -481,29 +489,25 @@ function mediaHeart() {
   return `<span class="media-heart" aria-hidden="true"><span class="media-heart-ic">${icon('heart')}</span></span>`;
 }
 
-function mediaHtml(p, detail) {
+function mediaHtml(p) {
   const imgs = p.images || [];
   if (!imgs.length) return '';
   const ratio = postRatio(p);
   const sizes = '(min-width: 600px) 528px, 100vw';
   if (imgs.length === 1) {
-    const frame = `<div class="photo-single" style="aspect-ratio:${ratio}">${photoImg(imgs[0], sizes, false, ratio)}</div>`;
+    const frame = `<div class="photo-single" style="aspect-ratio:${ratio}"><div class="zoom-layer">${photoImg(imgs[0], sizes, false, ratio)}</div></div>`;
     return `<div class="media">${frame}${mediaHeart()}</div>`;
   }
   const slides = imgs.map((im, i) => {
-    const frame = `<div class="photo-frame">${photoImg(im, sizes, true, ratio)}</div>`;
-    return detail
-      ? `<div class="carousel-slide" role="group" aria-roledescription="slide" aria-label="Photo ${i + 1} of ${imgs.length}">${frame}</div>`
-      : `<div class="carousel-slide" role="group" aria-roledescription="slide" aria-label="Photo ${i + 1} of ${imgs.length}">${frame}</div>`;
+    const frame = `<div class="photo-frame"><div class="zoom-layer">${photoImg(im, sizes, true, ratio)}</div></div>`;
+    return `<div class="carousel-slide" role="group" aria-roledescription="slide" aria-label="Photo ${i + 1} of ${imgs.length}">${frame}</div>`;
   }).join('');
   const dots = imgs.map((_, i) => `<button class="cdot${i === 0 ? ' on' : ''}" type="button" data-act="cdots" data-i="${i}" aria-label="Show photo ${i + 1}"${i === 0 ? ' aria-current="true"' : ''}></button>`).join('');
-  return `<div class="media">
-    <div class="carousel" data-carousel style="--ratio:${ratio}" role="group" aria-roledescription="carousel" aria-label="Photos">
+  return `<div class="media has-carousel" data-carousel style="--ratio:${ratio}">
+    <div class="carousel" role="group" aria-roledescription="carousel" aria-label="Photos">
       <div class="carousel-track" tabindex="0">${slides}</div>
-      <button class="carousel-arrow prev" type="button" data-act="cslide" data-dir="-1" aria-label="Previous photo" title="Previous photo">${icon('chevron-right')}</button>
-      <button class="carousel-arrow next" type="button" data-act="cslide" data-dir="1" aria-label="Next photo" title="Next photo">${icon('chevron-right')}</button>
-      <div class="carousel-dots">${dots}</div>
     </div>
+    <div class="carousel-dots">${dots}</div>
     ${mediaHeart()}
   </div>`;
 }
@@ -550,6 +554,7 @@ function hydrate(root = document) {
   });
 
   wireCarousels(root);
+  wirePhotoZooms(root);
 }
 
 function carouselDots(car, index) {
@@ -573,8 +578,8 @@ function carouselGo(car, index, animate = true) {
   clearTimeout(car._animTimer);
   if (animate && !reducedMotion()) {
     track.classList.add('animating');
-    track.style.transition = 'transform 220ms var(--ease)';
-    car._animTimer = setTimeout(() => track.classList.remove('animating'), 240);
+    track.style.transition = 'transform 320ms var(--ease)';
+    car._animTimer = setTimeout(() => track.classList.remove('animating'), 350);
   } else {
     track.style.transition = 'none';
     track.classList.remove('animating');
@@ -601,20 +606,28 @@ function wireCarousels(root = document) {
     const apply = () => {
       raf = 0;
       if (!drag || drag.axis !== 'x') return;
-      setX(-drag.index * drag.width + drag.dx);
+      setX(-drag.index * drag.width + drag.baseX + drag.dx);
     };
-    const settle = (target) => {
+    const settle = (target, d) => {
       track.classList.remove('dragging');
-      carouselGo(car, target);
+      track.classList.add('animating');
+      track.style.transition = 'none';
+      if (d) track.style.transform = `translate3d(${-d.index * d.width + d.baseX + d.dx}px, 0, 0)`;
+      void track.offsetWidth;
+      requestAnimationFrame(() => carouselGo(car, target));
     };
     const reset = () => {
       if (!drag) return;
+      const d = drag;
       cancelAnimationFrame(raf);
       raf = 0;
       track.classList.remove('dragging');
       track.style.transition = 'none';
-      setX(-car._index * (drag.width || width));
+      setX(-car._index * (d.width || width));
       drag = null;
+      if (d.pointerId != null) {
+        try { track.releasePointerCapture(d.pointerId); } catch (err) {}
+      }
     };
 
     const start = (x, y) => {
@@ -622,7 +635,14 @@ function wireCarousels(root = document) {
       if (!width) return;
       cancelAnimationFrame(raf);
       raf = 0;
+      const index = car._index || 0;
+      let currentX = -index * width;
+      const computed = getComputedStyle(track).transform;
+      if (computed && computed !== 'none') {
+        try { currentX = new DOMMatrixReadOnly(computed).m41; } catch (err) {}
+      }
       track.style.transition = 'none';
+      track.style.transform = `translate3d(${currentX}px, 0, 0)`;
       drag = {
         x, y,
         lastX: x,
@@ -631,7 +651,8 @@ function wireCarousels(root = document) {
         dx: 0,
         axis: null,
         width,
-        index: car._index || 0
+        index,
+        baseX: currentX + index * width
       };
     };
 
@@ -661,7 +682,13 @@ function wireCarousels(root = document) {
       const d = drag;
       cancelAnimationFrame(raf);
       raf = 0;
-      if (d.axis !== 'x') { drag = null; return; }
+      if (d.axis !== 'x') {
+        drag = null;
+        if (d.pointerId != null) {
+          try { track.releasePointerCapture(d.pointerId); } catch (err) {}
+        }
+        return;
+      }
       const dx = d.dx;
       const velocity = Math.abs(d.vx);
       const dir = dx < 0 ? 1 : -1;
@@ -672,7 +699,10 @@ function wireCarousels(root = document) {
       target = Math.max(0, Math.min(dots.length - 1, target));
       suppressClickUntil = performance.now() + 280;
       drag = null;
-      settle(target);
+      if (d.pointerId != null) {
+        try { track.releasePointerCapture(d.pointerId); } catch (err) {}
+      }
+      settle(target, d);
     };
 
     track.addEventListener('touchstart', (e) => {
@@ -698,6 +728,9 @@ function wireCarousels(root = document) {
     track.addEventListener('pointerdown', (e) => {
       if (e.pointerType !== 'mouse' || e.button !== 0) return;
       start(e.clientX, e.clientY);
+      if (!drag) return;
+      drag.pointerId = e.pointerId;
+      try { track.setPointerCapture(e.pointerId); } catch (err) {}
     });
 
     track.addEventListener('pointermove', (e) => {
@@ -706,11 +739,13 @@ function wireCarousels(root = document) {
     });
 
     const endMouse = (e) => {
-      if (!drag || e.pointerType !== 'mouse') return;
+      if (!drag || e.pointerType !== 'mouse' || e.pointerId !== drag.pointerId) return;
       end(e.clientX);
     };
     track.addEventListener('pointerup', endMouse);
-    track.addEventListener('pointercancel', reset);
+    document.addEventListener('pointerup', endMouse);
+    document.addEventListener('pointercancel', reset);
+    track.addEventListener('lostpointercapture', reset);
 
     track.addEventListener('keydown', (e) => {
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Home' && e.key !== 'End') return;
@@ -739,6 +774,169 @@ function wireCarousels(root = document) {
 
     track.style.transition = 'none';
     setX(0);
+  });
+}
+
+function wirePhotoZooms(root = document) {
+  $$('.post .media', root).forEach((media) => {
+    if (media.dataset.zoomWired) return;
+    media.dataset.zoomWired = '1';
+
+    const pointers = new Map();
+    let overlay = null;
+    let stage = null;
+    let zoom = { z: 1, x: 0, y: 0 };
+    let frameRect = null;
+    let pinch = null;
+    let pan = null;
+    let closing = false;
+
+    const isCarousel = () => media.hasAttribute('data-carousel');
+
+    const activeLayer = () => {
+      if (isCarousel()) {
+        const slides = media.querySelectorAll('.carousel-slide');
+        const index = Math.max(0, Math.min(slides.length - 1, media._index || 0));
+        return slides[index] ? slides[index].querySelector('.zoom-layer') : null;
+      }
+      return media.querySelector('.photo-single .zoom-layer');
+    };
+
+    const apply = () => {
+      if (stage) stage.style.transform = `translate3d(${zoom.x}px, ${zoom.y}px, 0) scale(${zoom.z})`;
+    };
+
+    const close = () => {
+      if (!overlay) return;
+      const node = overlay;
+      const st = stage;
+      overlay = null;
+      stage = null;
+      pinch = null;
+      pan = null;
+      closing = true;
+      node.classList.add('closing');
+      if (reducedMotion() || (zoom.z <= 1.01 && Math.abs(zoom.x) < 1 && Math.abs(zoom.y) < 1)) {
+        node.remove();
+        media.classList.remove('zooming-source');
+        closing = false;
+        return;
+      }
+      st.style.transition = 'transform 340ms cubic-bezier(.18, 1.25, .32, 1)';
+      st.style.transform = 'translate3d(0, 0, 0) scale(1)';
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        media.classList.remove('zooming-source');
+        if (node.isConnected) node.remove();
+        closing = false;
+      };
+      st.addEventListener('transitionend', finish, { once: true });
+      setTimeout(finish, 380);
+    };
+
+    const open = () => {
+      if (overlay || closing) return;
+      const layer = activeLayer();
+      if (!layer) return;
+      const frameEl = layer.parentElement;
+      const rect = frameEl.getBoundingClientRect();
+      const node = document.createElement('div');
+      node.className = 'photo-zoom-overlay';
+      const backdrop = document.createElement('div');
+      backdrop.className = 'photo-zoom-backdrop';
+      const st = document.createElement('div');
+      st.className = 'photo-zoom-stage';
+      st.style.cssText = `left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px;border-radius:${getComputedStyle(frameEl).borderRadius};`;
+      const clone = layer.cloneNode(true);
+      clone.style.transform = '';
+      st.append(clone);
+      node.append(backdrop, st);
+      document.body.append(node);
+      requestAnimationFrame(() => node.classList.add('on'));
+      overlay = node;
+      stage = st;
+      media.classList.add('zooming-source');
+      frameRect = rect;
+      zoom = { z: 1, x: 0, y: 0 };
+      apply();
+    };
+
+    const startPinch = () => {
+      const pts = Array.from(pointers.values());
+      if (pts.length < 2) return;
+      const dx = pts[0].x - pts[1].x;
+      const dy = pts[0].y - pts[1].y;
+      const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+      const cx = frameRect.left + frameRect.width / 2;
+      const cy = frameRect.top + frameRect.height / 2;
+      pinch = {
+        dist: Math.max(1, Math.hypot(dx, dy)),
+        mid,
+        z: zoom.z,
+        cx,
+        cy,
+        originX: (mid.x - cx - zoom.x) / zoom.z,
+        originY: (mid.y - cy - zoom.y) / zoom.z
+      };
+      pan = null;
+    };
+
+    media.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse') return;
+      if (e.target.closest('button, a')) return;
+      try { media.setPointerCapture(e.pointerId); } catch (err) {}
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (pointers.size === 2) {
+        e.preventDefault();
+        open();
+        startPinch();
+      } else if (pointers.size === 1 && overlay) {
+        pan = { x: e.clientX, y: e.clientY, baseX: zoom.x, baseY: zoom.y };
+      }
+    });
+
+    media.addEventListener('pointermove', (e) => {
+      if (!pointers.has(e.pointerId)) return;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (!overlay) return;
+
+      if (pointers.size >= 2 && pinch) {
+        e.preventDefault();
+        const pts = Array.from(pointers.values());
+        const dx = pts[0].x - pts[1].x;
+        const dy = pts[0].y - pts[1].y;
+        const dist = Math.max(1, Math.hypot(dx, dy));
+        const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+        zoom.z = clamp(pinch.z * dist / pinch.dist, 1, 4.5);
+        zoom.x = (mid.x - pinch.cx) - pinch.originX * zoom.z;
+        zoom.y = (mid.y - pinch.cy) - pinch.originY * zoom.z;
+        apply();
+      } else if (pan && pointers.size === 1) {
+        e.preventDefault();
+        zoom.x = pan.baseX + (e.clientX - pan.x);
+        zoom.y = pan.baseY + (e.clientY - pan.y);
+        apply();
+      }
+    }, { passive: false });
+
+    const endPointer = (e) => {
+      if (!pointers.has(e.pointerId)) return;
+      pointers.delete(e.pointerId);
+      if (overlay && pointers.size === 1) {
+        const only = Array.from(pointers.values())[0];
+        pinch = null;
+        pan = { x: only.x, y: only.y, baseX: zoom.x, baseY: zoom.y };
+      } else if (!pointers.size) {
+        pinch = null;
+        pan = null;
+        if (overlay) close();
+      }
+    };
+    media.addEventListener('pointerup', endPointer);
+    media.addEventListener('pointercancel', endPointer);
   });
 }
 
@@ -777,7 +975,7 @@ function postCard(p, opts = {}) {
   const likes = p.likes + (liked ? 1 : 0);
   const likeLabel = `${liked ? 'Unlike' : 'Like'} post, ${plural(likes, 'like')}`;
   const replyLabel = replies.length ? `Reply, ${plural(replies.length, 'reply')}` : 'Reply';
-  const images = mediaHtml(p, detail);
+  const images = mediaHtml(p);
 
   const text = p.text ? `<div class="post-text">${esc(p.text)}</div>` : '';
   const tags = (p.tags || []).filter(Boolean).slice(0, 3);
@@ -1003,19 +1201,20 @@ function renderChats() {
   scheduleScrollbar();
 }
 
-function renderProfile() {
-  const me = state.me;
+function profileList() {
   const posts = sortedPosts().filter((p) => p.userId === 'me');
   const saved = sortedPosts().filter((p) => state.bookmarked.includes(p.id));
   const photos = [];
   for (const p of posts) for (const im of (p.images || [])) photos.push({ p, im });
 
-  const list = profileTab === 'media'
-    ? (photos.length ? photoGrid(photos) : '<p class="empty">No photos yet.</p>')
-    : profileTab === 'saved'
-      ? (saved.length ? saved.map((p) => postCard(p)).join('') : '<p class="empty">Nothing saved yet. Tap the bookmark on a post to keep it here.</p>')
-      : (posts.length ? posts.map((p) => postCard(p)).join('') : '<p class="empty">No posts yet.</p>');
+  if (profileTab === 'media') return photos.length ? photoGrid(photos) : '<p class="empty">No photos yet.</p>';
+  if (profileTab === 'saved') return saved.length ? saved.map((p) => postCard(p)).join('') : '<p class="empty">Nothing saved yet. Tap the bookmark on a post to keep it here.</p>';
+  return posts.length ? posts.map((p) => postCard(p)).join('') : '<p class="empty">No posts yet.</p>';
+}
 
+function renderProfile() {
+  const me = state.me;
+  const posts = sortedPosts().filter((p) => p.userId === 'me');
   const body = $('#profile-body');
   body.innerHTML = `
     ${profileHead(me, posts.length, true)}
@@ -1024,10 +1223,26 @@ function renderProfile() {
       <button class="${profileTab === 'media' ? 'on' : ''}" type="button" data-act="ptab" data-v="media">Media</button>
       <button class="${profileTab === 'saved' ? 'on' : ''}" type="button" data-act="ptab" data-v="saved" aria-label="Saved posts, only visible to you" title="Only visible to you">${icon('lock')}<span>Saved</span></button>
     </div>
-    ${list}
+    <div id="profile-list">${profileList()}</div>
   `;
   injectIcons(body);
   hydrate(body);
+  scheduleScrollbar();
+}
+
+function setProfileTab(next) {
+  if (next === profileTab) return;
+  profileTab = next;
+  ui.profileTab = next;
+  saveUI();
+  const body = $('#profile-body');
+  const list = $('#profile-list');
+  if (!body || !list) { renderProfile(); return; }
+  $$('.seg button', body).forEach((b) => b.classList.toggle('on', b.dataset.v === next));
+  list.innerHTML = profileList();
+  injectIcons(list);
+  hydrate(list);
+  swapIn(list);
   scheduleScrollbar();
 }
 
@@ -1603,7 +1818,7 @@ function closeVisual(entry, immediate = false) {
     entry.cleanup = null;
   }
   if (immediate) entry.el.remove();
-  else setTimeout(() => entry.el.remove(), matchMedia('(min-width: 900px)').matches ? 360 : 310);
+  else setTimeout(() => entry.el.remove(), matchMedia('(min-width: 900px)').matches ? 380 : 330);
 }
 
 function closeAllLayers({ animate = true, restore = true } = {}) {
@@ -1854,7 +2069,7 @@ function openPeopleList(id, kind) {
       <p class="people-note">${esc(note)}</p>
       <div class="people-search">
         <span class="search-ic" data-icon="search"></span>
-        <input class="field search" type="search" placeholder="Search people" autocomplete="off" autocapitalize="none" spellcheck="false" aria-label="Search people">
+        <input class="field search" name="q" type="search" placeholder="Search people" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" aria-autocomplete="none" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" aria-label="Search people">
       </div>
       <div class="people-results"></div>
     </div>
@@ -1946,7 +2161,7 @@ function openPost(id) {
       <div class="replies" id="detail-replies">${repliesHtml(id)}</div>
     </div>
     <form class="replybar" id="reply-form">
-      <input class="field" name="reply" type="text" maxlength="300" placeholder="Write a reply" autocomplete="off" enterkeyhint="send" aria-label="Write a reply">
+      <input class="field" name="reply" type="text" maxlength="300" placeholder="Write a reply" autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="true" enterkeyhint="send" aria-autocomplete="none" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" aria-label="Write a reply">
       <button class="btn sm" type="submit">Reply</button>
     </form>
   `, { cls: 'detail-layer', descriptor: { type: 'post', id } });
@@ -2015,7 +2230,7 @@ function openChat(chatId) {
     </header>
     <div class="msgs" id="thread-msgs">${msgs.map(msgHtml).join('')}</div>
     <form class="composer" id="thread-form">
-      <input class="field" name="message" type="text" maxlength="500" placeholder="Message" autocomplete="off" enterkeyhint="send" aria-label="Message ${esc(u.name)}">
+      <input class="field" name="message" type="text" maxlength="500" placeholder="Message" autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="true" enterkeyhint="send" aria-autocomplete="none" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" aria-label="Message ${esc(u.name)}">
       <button class="send" type="submit" aria-label="Send">${icon('send')}</button>
     </form>
   `, {
@@ -2169,7 +2384,7 @@ function openCompose(restore) {
     <div class="layer-body compose-body">
       <section class="compose-section">
         <div class="compose-label">Text</div>
-        <textarea class="compose-area" id="compose-text" maxlength="500" placeholder="What's on your mind?" aria-label="Post text"></textarea>
+        <textarea class="compose-area" id="compose-text" maxlength="500" placeholder="What's on your mind?" autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="true" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" aria-label="Post text"></textarea>
       </section>
 
       <section class="compose-section">
@@ -2189,7 +2404,7 @@ function openCompose(restore) {
         <div class="compose-label-row"><span class="compose-label">Tags</span><span class="compose-note">Up to 3</span></div>
         <div class="tagedit">
           <div class="tagchips" id="compose-tags"></div>
-          <input class="taginput" id="compose-tag" type="text" maxlength="24" placeholder="Add up to 3 tags" autocomplete="off" spellcheck="false" aria-label="Add a tag">
+          <input class="taginput" id="compose-tag" name="tag" type="text" maxlength="24" placeholder="Add up to 3 tags" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" aria-autocomplete="none" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" aria-label="Add a tag">
         </div>
       </section>
 
@@ -2213,11 +2428,9 @@ function openCompose(restore) {
     <footer class="compose-foot">
       <button class="textbtn compose-discard" id="compose-discard" type="button">Discard</button>
       <span class="spacer"></span>
-      <button class="icon-btn" id="compose-pick" type="button" aria-label="Add photos" title="Add photos">${icon('image')}</button>
       <span class="count" id="compose-count">0/500</span>
     </footer>
   `, {
-    up: true,
     cls: 'compose-layer',
     descriptor: { type: 'compose' },
     capture() {
@@ -2246,7 +2459,6 @@ function openCompose(restore) {
   const photoCount = $('#photo-count', el);
   const photoHint = $('#photo-hint', el);
   const ratioBtn = $('#compose-ratio-btn', el);
-  const pick = $('#compose-pick', el);
   const file = $('#compose-file', el);
   const tagBox = $('#compose-tags', el);
   const tagInput = $('#compose-tag', el);
@@ -2308,7 +2520,7 @@ function openCompose(restore) {
       previewMedia.innerHTML = '';
       return;
     }
-    previewMedia.innerHTML = mediaHtml(previewPost(), true);
+    previewMedia.innerHTML = mediaHtml(previewPost());
     hydrate(previewMedia);
   }
 
@@ -2461,7 +2673,6 @@ function openCompose(restore) {
   });
 
   ratioBtn.addEventListener('click', () => openEditor(0));
-  pick.addEventListener('click', () => file.click());
   discard.addEventListener('click', () => {
     if (discard.disabled) return;
     openConfirm('discard');
@@ -2522,7 +2733,7 @@ function openCompose(restore) {
   renderTags();
   grow();
   renderPhotos();
-  if (!restore) {
+  if (!restore && matchMedia('(pointer: fine)').matches) {
     requestAnimationFrame(() => {
       if (area.isConnected) area.focus({ preventScroll: true });
     });
@@ -2846,15 +3057,15 @@ function openEdit(restore) {
       </div>
       <div>
         <label class="lbl" for="edit-name">Name</label>
-        <input class="field" id="edit-name" maxlength="40" value="${esc(name)}" autocomplete="name">
+        <input class="field" id="edit-name" name="display" maxlength="40" value="${esc(name)}" autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other">
       </div>
       <div>
         <label class="lbl" for="edit-handle">Handle</label>
-        <input class="field" id="edit-handle" maxlength="20" value="${esc(handle)}" autocapitalize="none" spellcheck="false">
+        <input class="field" id="edit-handle" name="handle" maxlength="20" value="${esc(handle)}" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" aria-autocomplete="none" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other">
       </div>
       <div>
         <label class="lbl" for="edit-bio">Bio</label>
-        <textarea class="field bio" id="edit-bio" maxlength="160">${esc(bio)}</textarea>
+        <textarea class="field bio" id="edit-bio" name="bio" maxlength="160" autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="true" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other">${esc(bio)}</textarea>
       </div>
     </form>
   `, {
@@ -3267,7 +3478,6 @@ function bindEvents() {
     tab.addEventListener('click', () => setTab(tab.dataset.tab));
   });
 
-  $('#feed-top').addEventListener('click', () => setTab('feed'));
 
   $('#explore-search').addEventListener('input', (e) => {
     const q = e.target.value;
@@ -3299,11 +3509,7 @@ function bindEvents() {
       case 'chat': openChat(id); break;
       case 'edit': openEdit(); break;
       case 'ptab':
-        profileTab = el.dataset.v;
-        ui.profileTab = profileTab;
-        saveUI();
-        renderProfile();
-        swapIn($('#profile-body'));
+        setProfileTab(el.dataset.v);
         break;
       case 'theme': setTheme(el.dataset.v); break;
       case 'install': installApp(); break;
@@ -3334,11 +3540,6 @@ function bindEvents() {
       case 'liked': openLikedPosts(); break;
       case 'comments': openMyComments(); break;
       case 'goto-explore': setTab('explore'); break;
-      case 'cslide': {
-        const car = el.closest('[data-carousel]');
-        if (car) carouselGo(car, (car._index || 0) + (Number(el.dataset.dir) || 1));
-        break;
-      }
       case 'cdots': {
         const car = el.closest('[data-carousel]');
         if (car) carouselGo(car, Number(el.dataset.i || 0));

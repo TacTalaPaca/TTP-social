@@ -1,4 +1,4 @@
-# ADENTS.md
+# AGENTS.md
 
 This file is the source of truth for work on Koinara. Read it before changing code.
 
@@ -25,6 +25,8 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - Do not animate width, height, top, left, margin, box-shadow, filter, or background-color during a gesture.
 - Avoid permanent `will-change`. Add it only while an element is actually animating, then remove it.
 - Do not add loading spinners, skeletons, or artificial delays.
+- Keep scroll positions stable across refresh and re-render. Use `overflow-anchor: none` and preserve scroll when replacing lists.
+- Use the shared `--ease` curve for page, layer, compose, and carousel motion so transitions flow consistently.
 - Keep the DOM small. Do not re-render a whole view during a transition.
 - Respect `prefers-reduced-motion`.
 - Avoid effects that force a full repaint, such as backdrop filters or large blurred shadows.
@@ -34,7 +36,11 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 
 - Monochrome, calm, and minimal. Use the existing light and dark tokens.
 - Typeface: Atkinson Hyperlegible Next, bundled locally.
-- Icons: the bundled Lucide subset, stroke width 2.75. Do not add a second icon set.
+- Icons: the bundled Lucide subset, stroke width 2.25. Do not add a second icon set.
+- The brand mark is the custom broken-K SVG with square cuts and a 2.75 stroke. The sidebar uses the text wordmark only.
+- The mobile unread dot sits at the optical center of the chat bubble, not the center of the icon box.
+- The app icon is a single SVG. Do not add PNG icon variants.
+- The sidebar brand is a centered two-line lockup. The wordmark and byline share the same width.
 - Keep margins equal and spacing consistent. Use the `--gutter` token.
 - Use only slight radii on straight elements. Do not turn the interface into pills and bubbles.
 - Do not add page-title bars. Headers belong to layers only.
@@ -44,7 +50,14 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - The settings gear belongs in the profile header next to Edit.
 - The desktop layout uses a left sidebar and one middle column. There is no right rail.
 - The mobile layout uses a floating tab bar and a distinct touch experience.
-- Hover effects only on devices that can hover. Touch devices get active feedback instead.
+- The mobile feed has no top bar. New post lives as a quiet square button in the center of the tab bar.
+- The sidebar wordmark is static, not a link. Keep the wordmark and byline centered and equal in width.
+- Desktop sidebar tabs use a subtle border and 9px vertical gaps.
+- Mobile tab selection uses one short shared fade for icon, label, and background. Do not stagger them or animate the icon separately.
+- Profile tab changes animate only the list below the tabs. Never move or fade the profile header or the tabs.
+- Keep browser and password-manager autofill buttons out of search, comment, and profile fields.
+- Hover effects only on devices that can hover. Use the 120ms shared easing for hover transitions. Touch devices get active feedback instead.
+- Clear hover styles on `(hover: none)` and coarse pointers so highlights do not stick after a tap.
 - The Chromium scrollbar is a thin overlay that takes no layout space. Firefox keeps its native thin scrollbar.
 - Keep one manifest in standalone mode. Do not set manifest system bar colors or add manifest variants.
 - Android Chrome PWAs cannot make the system navigation bar transparent. Use the theme-color and color-scheme metas so the system bars follow the active theme.
@@ -92,6 +105,12 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - Save uses the same expanding hairline ring as Like, centered on the bookmark.
 - Media hearts use black or white based on the image luminance. Do not add a stroke or border.
 - Keep the photo frame aspect ratio shared by every photo in a post.
+- On mobile, post media and photo grids are full-bleed. Text and actions keep the normal gutter.
+- Carousel dots sit below the media, never over the photo.
+- Do not add carousel arrow buttons. Swipe, mouse drag, dots, and keyboard arrows are the controls.
+- Mouse drag must capture the pointer and release it on pointerup, pointercancel, or lost capture.
+- Pinch zoom uses a temporary overlay. Hide the source photo, anchor the zoom at the pinch point, keep the image above the app, and spring back when the gesture ends.
+- Page pinch zoom is disabled on mobile so the photo owns the gesture.
 
 ## Photos and the composer
 
@@ -109,6 +128,8 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - Show a filmstrip for multi-photo posts.
 - Keep drafts across Back and Forward. Discard only when the user asks.
 - Keep the composer footer above the on-screen keyboard.
+- Do not autofocus the composer on touch devices. The keyboard must not open during the entry transition.
+- Do not duplicate the add-photo control in the composer footer. The photo tile is the single entry point.
 
 ## Chat
 

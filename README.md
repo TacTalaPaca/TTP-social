@@ -6,7 +6,7 @@ Koinara is a fast single-page app with four tabs: Feed, Explore, Chat, and Profi
 
 - Live demo: https://tactalapaca.github.io/TTP-social/
 - Repository: https://github.com/TacTalaPaca/TTP-social
-- Version: 1.5
+- Version: 1.6
 - License: PolyForm Noncommercial 1.0.0
 
 ## Features
@@ -18,6 +18,7 @@ Koinara is a fast single-page app with four tabs: Feed, Explore, Chat, and Profi
 - Compressed WebP uploads with a full-screen crop editor.
 - Up to five photos per post, with shared aspect ratio and per-photo pan and zoom.
 - One-photo-per-swipe carousels.
+- Pinch-to-zoom on post photos with elastic return.
 - Mobile gestures, keyboard navigation, and installable PWA support.
 - Standalone installed app with theme-aware system bars.
 - Offline shell and media cache.

@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.6
+
+- Removed the mobile feed top bar. New post is now a quiet centered button in the tab bar.
+- Made post photos and photo grids full-bleed on mobile.
+- Kept text and actions on the normal mobile gutter.
+- Moved carousel dots below the photos.
+- Removed the carousel arrow buttons. Swipe, mouse drag, dots, and keyboard arrows remain.
+- Fixed carousel mouse drag so it releases reliably outside the track.
+- Smoothed carousel paging and unified the transition easing across pages, layers, compose, and carousels.
+- Added temporary pinch-to-zoom on post photos. The photo lifts above the app, hides the source, anchors at the pinch point, and springs back on release.
+- Disabled page pinch zoom on mobile so the gesture belongs to the photo.
+- Replaced the compose slide with a stable fade and lift, removed the duplicate footer photo picker, and stopped mobile autofocus from opening the keyboard during the transition.
+- Gave mobile tab selection a short synchronized color and background fade, cleared sticky hover states on touch devices, and polished desktop sidebar spacing and the New post hover.
+- Unified PC hover timing at 120ms and added subtle borders to desktop sidebar tabs.
+- Rebuilt the sidebar brand as a centered two-line lockup with an equal-width wordmark and tracked byline. The wordmark is static, not a link.
+- Optically centered the mobile unread dot inside the chat bubble.
+- Made profile tab changes animate only the list, so the header and tabs stay put.
+- Suppressed browser and password-manager autofill buttons in search, comment, and profile fields.
+- Replaced the text K with a bolder broken-K mark and refreshed the app icons.
+- Reduced the icon set to one SVG app icon and removed all PNG variants.
+- Reduced icon stroke weight to 2.25 to match the type.
+- Stabilized scroll restoration on refresh and re-render.
+- Renamed the project rules file to `AGENTS.md`.
+- Updated the service worker cache to `koinara-1.6`.
+
 ## 1.5
 
 - Restored standalone install mode.
