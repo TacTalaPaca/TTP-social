@@ -1,5 +1,5 @@
 // Koinara service worker. Cache the whole demo for offline use.
-const CACHE = 'koinara-v15';
+const CACHE = 'koinara-1.3';
 
 const CORE = [
   './',

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3
+
+- Made the installed Android system navigation bar transparent through the manifest theme color.
+- Kept the browser theme color in sync with the selected light or dark theme.
+- Updated the page color scheme at runtime so system bar icons follow the app theme.
+- Refined page transitions to slide and fade with vertical motion on desktop and more horizontal movement on mobile.
+- Kept all views laid out so tab switches do not wait on layout.
+- Contained tab transitions inside the main column.
+- Updated the service worker cache to `koinara-1.3`.
+
 ## 1.2
 
 - Added the PolyForm Noncommercial 1.0.0 license, README, and repository metadata.
@@ -12,7 +22,7 @@
 - Added repository readiness files and third-party license notices.
 - Renamed the public repository to TTP-social.
 - Removed the duplicate AGENTS.md symlink. ADENTS.md is the single rules file.
-- Updated the service worker cache.
+- Updated the service worker cache to `koinara-v15`.
 
 ## 1.1
 
@@ -26,4 +36,4 @@
 - Reworked tab swipes to use the original release threshold with a light page transition.
 - Added full navigation snapshots so Back and Forward restore tabs, layers, scroll, search, drafts, and crops.
 - Added keyboard-aware layout for reply bars, chat composers, and the compose footer.
-- Added VERSION, CHANGELOG, and ADENTS.md.
+- Added CHANGELOG and ADENTS.md.

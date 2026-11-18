@@ -3,7 +3,7 @@
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 const KEY = 'koinara.v1';
-const APP_VERSION = '1.2';
+const APP_VERSION = '1.3';
 const hadStateOnBoot = (() => { try { return localStorage.getItem(KEY) !== null; } catch (e) { return false; } })();
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = (p = 'x') => p + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -3045,9 +3045,13 @@ const mq = matchMedia('(prefers-color-scheme: dark)');
 
 function applyTheme() {
   const dark = state.theme === 'dark' || (state.theme === 'auto' && mq.matches);
-  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  const scheme = dark ? 'dark' : 'light';
+  document.documentElement.dataset.theme = scheme;
+  document.documentElement.style.colorScheme = scheme;
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.content = dark ? '#0b0b0a' : '#f4f4f1';
+  const schemeMeta = document.querySelector('meta[name="color-scheme"]');
+  if (schemeMeta) schemeMeta.content = scheme;
 }
 
 const viewEl = (name) => $('#view-' + name);

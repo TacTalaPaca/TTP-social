@@ -6,7 +6,7 @@ Koinara is a fast single-page app with four tabs: Feed, Explore, Chat, and Profi
 
 - Live demo: https://tactalapaca.github.io/TTP-social/
 - Repository: https://github.com/TacTalaPaca/TTP-social
-- Version: 1.2
+- Version: 1.3
 - License: PolyForm Noncommercial 1.0.0
 
 ## Features

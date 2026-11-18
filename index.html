@@ -26,10 +26,14 @@
       var s = JSON.parse(localStorage.getItem('koinara.v1') || '{}');
       var t = s.theme || 'auto';
       var dark = t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
-      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      var scheme = dark ? 'dark' : 'light';
+      document.documentElement.dataset.theme = scheme;
+      document.documentElement.style.colorScheme = scheme;
       if (s.auth) document.documentElement.classList.add('authed');
       var m = document.querySelector('meta[name="theme-color"]');
       if (m) m.content = dark ? '#0b0b0a' : '#f4f4f1';
+      var cm = document.querySelector('meta[name="color-scheme"]');
+      if (cm) cm.content = scheme;
     } catch (e) {}
   })();
 </script>
@@ -60,7 +64,7 @@
             <button class="textbtn" type="button" id="demo-btn">Use demo account</button>
           </form>
           <div class="login-foot" aria-hidden="true">
-            <span>Offline ready</span><i></i><span data-version>V1.2</span>
+            <span>Offline ready</span><i></i><span data-version>V1.3</span>
           </div>
         </div>
       </div>

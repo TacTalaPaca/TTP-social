@@ -46,6 +46,8 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - The mobile layout uses a floating tab bar and a distinct touch experience.
 - Hover effects only on devices that can hover. Touch devices get active feedback instead.
 - The Chromium scrollbar is a thin overlay that takes no layout space. Firefox keeps its native thin scrollbar.
+- The installed app system bars follow the app theme. Keep the manifest theme color transparent and update the theme-color meta with the selected theme.
+- Keep the color-scheme meta and the root color scheme in sync with the selected theme so system bar icons stay legible.
 - First and last rows in every list get a divider. Dividers stay quiet and consistent.
 
 ## Navigation and layers
@@ -163,7 +165,7 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - Do not leave debug globals, console logs, or test hooks in production code.
 - Validate with `node --check` for scripts and `node --input-type=module --check < app.js` for the app bundle.
 - Test with the service worker disabled in local development (`?nosw`).
-- Bump the service worker cache name when shell files change.
+- Bump the service worker cache name with every version. Use `koinara-<version>`.
 
 ## Language and symbols
 
@@ -179,7 +181,7 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 
 - The project uses the PolyForm Noncommercial License 1.0.0 in `LICENSE`.
 - Do not change the license without the owner's approval.
-- Keep `README.md`, `VERSION`, and `CHANGELOG.md` current. The required notice lives in `README.md`.
+- Keep `README.md` and `CHANGELOG.md` current. The required notice lives in `README.md`.
 - Publishing is manual. Do not push, deploy, or publish unless the owner explicitly asks.
 - After the initial repository setup, the owner controls all publishing.
 - Keep the public repository free of private data, tokens, local test artifacts, and editor files.
@@ -191,9 +193,9 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - The project uses a `1.x` version model.
 - The first number is a major release.
 - The second number increases by one for every iteration commit.
-- `VERSION` contains the current version.
+- `APP_VERSION` in `app.js` is the single source for the current version.
 - `CHANGELOG.md` gets an entry for every version.
-- Update the visible version strings in the interface with every bump.
+- Update `APP_VERSION` and the visible version strings with every bump. Do not add a separate version file.
 - Commit messages start with `Koinara <version>:` and then a short summary.
 - Keep each commit focused. Do not mix unrelated work.
 - Run the checks before committing.
@@ -208,5 +210,4 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - `sw.js`: offline cache.
 - `manifest.webmanifest`: install metadata.
 - `assets/`: bundled font, icons, and AVIF photos.
-- `VERSION`: current version.
 - `CHANGELOG.md`: version history.
