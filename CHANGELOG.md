@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.8
+
+- Expanded the local seed database to 27 accounts plus the demo user, 121 posts, 138 comments, 22 chats, 232 messages, 23 liked posts, and 14 bookmarked posts.
+- Added 20 new scene photos and 21 new posts, including a five-photo coast walk, with every seed photo used exactly once.
+- Added a 137-message unread chat, a love chat, a threat chat, and six more conversations, with varied quick replies.
+- Moved tags directly onto posts and kept accounts, replies, chats, messages, follows, and likes/bookmarks as ID-linked rows.
+- Reworked Explore into a curated page with trending tags, five suggested people, a ranked discover feed, and six recent photos.
+- Improved search with #tag, @handle, and plain word modes, ranked results, counts, a clear button, and incremental more results.
+- Limited post media so each of the 38 photos appears in exactly one post.
+- Compressed uploads locally to AVIF with a bundled WASM encoder and a WebP fallback, with a tinted processing veil that names AVIF and shows progress.
+- Made the reply action and chat send icon-only, centered the send icon, and capped each post at five photos.
+- Added exact unread count pills to chat rows, with no display cap.
+- Rebuilt the crop editor: a dark stage, a bottom filmstrip, bottom ratio chips, a thick zoom slider, and a full-width Done button. Removed the reset and remove controls.
+- Improved mouse wheel zoom and drag panning in the crop editor.
+- Rebuilt the crop zoom slider as a native range control with a soft track, a full-height bordered cube handle that forms the bar ends, and a fill that always ends at the cube center.
+- Batched slider and pinch zoom to the frame rate and added a short eased glide for wheel zoom.
+- Promoted crop images to the compositor with 3D transforms for smoother pinch and wheel zoom.
+- Rebuilt the post options sheet as a full-width panel with a fading veil, a smooth sheet slide, drag-down dismissal, consistent concentric corners, stable layout between views, and inline delete confirmation that fades before the sheet closes.
+- Constrained handles to lowercase letters, `_`, `-`, and `.`, up to 24 characters, with live sanitising and a leading `@` in the field.
+- Removed the section titles and helper copy from the composer, made the preview section full bleed, and enabled carousel browsing in the preview.
+- Added a profile photo lightbox that reuses the feed photo pinch, pan, and release spring on a free stage, with wheel zoom on desktop and a tap-anywhere close. The lightbox morphs from the tapped profile picture into place and back on close, and hides the source picture so no duplicate shows.
+- Gave every veil the same 340ms fade in both directions, fixed the photo zoom backdrop so it fades out instead of snapping, and made the profile photo morph symmetric on the shared layer timing.
+- Made profile pictures circles across the app, including the profile header and the photo lightbox.
+- Hard cropped published post photos and saved profile photos into new local AVIF files, and discarded the uncropped sources.
+- Removed the profile Edit photo action, and restyled Change photo and Remove photo as matching full-width buttons.
+- Added a square profile photo crop editor with the shared zoom slider and a Use photo action, and kept avatar uploads pending until Save.
+- Added equal, compact margins to search, compose, chat, and reply bars.
+- Fixed the selected segmented-tab hover contrast in dark mode.
+- Updated the service worker cache to `koinara-1.8`.
+
 ## 1.7
 
 - Reworked the mobile profile header: icon-only Edit and Settings buttons split above the stats, a bordered bio box with the join date, and tighter vertical spacing.

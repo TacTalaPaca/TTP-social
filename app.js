@@ -3,7 +3,7 @@
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 const KEY = 'koinara.v1';
-const APP_VERSION = '1.7';
+const APP_VERSION = '1.8';
 const hadStateOnBoot = (() => { try { return localStorage.getItem(KEY) !== null; } catch (e) { return false; } })();
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = (p = 'x') => p + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -19,7 +19,8 @@ function rel(ts) {
 
 const fmt = (n) => n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : String(n);
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
-const slug = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[^\w]+/g, '').slice(0, 20);
+const HANDLE_MAX = 24;
+const slug = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[^a-z_.-]+/g, '').slice(0, HANDLE_MAX);
 
 function initials(name) {
   return String(name || '?').trim().split(/\s+/).slice(0, 2).map((w) => w[0] || '').join('').toUpperCase();
@@ -114,7 +115,13 @@ function cropMetrics(im, ratioCss) {
 
 function cropStyle(im, ratioCss) {
   const m = cropMetrics(im, ratioCss);
-  return `width:${m.bw}%;height:${m.bh}%;transform:translate(-50%,-50%) translate(${m.px}%,${m.py}%) scale(${m.z})`;
+  return `width:${m.bw}%;height:${m.bh}%;transform:translate3d(-50%,-50%,0) translate3d(${m.px}%,${m.py}%,0) scale(${m.z})`;
+}
+
+function editorImg(a, ratioCss) {
+  const style = cropStyle(a, ratioCss);
+  if (a.m) return `<img data-media="${a.m}" alt="" draggable="false" style="${style}">`;
+  return `<img src="assets/img/${esc(a.s)}-800.avif" alt="${esc(a.a || '')}" draggable="false" style="${style}">`;
 }
 
 /* ------------------------------------------------------------------ state */
@@ -220,7 +227,7 @@ function loadUI() {
       const n = Number(v.scrolls && v.scrolls[key]);
       if (Number.isFinite(n) && n > 0) scrolls[key] = Math.min(n, 1000000);
     }
-    const kinds = new Set(['profile', 'people', 'post', 'chat', 'settings', 'shortcuts', 'saved', 'liked', 'comments', 'compose', 'edit', 'crop', 'confirm']);
+    const kinds = new Set(['profile', 'people', 'post', 'avatar', 'chat', 'settings', 'shortcuts', 'saved', 'liked', 'comments', 'compose', 'edit', 'crop', 'confirm']);
     const savedLayers = Array.isArray(v.layers) ? v.layers : [];
     const layers = [];
     for (const d of savedLayers.slice(0, 8)) {
@@ -342,6 +349,7 @@ function toggleFollow(id) {
   refreshFollow(id);
   renderFeed();
   renderProfile();
+  if (currentTab === 'explore') renderExplore();
   toast(i >= 0 ? `Unfollowed ${user(id).name}` : `Following ${user(id).name}`);
 }
 function updateStatCounts(id) {
@@ -777,18 +785,175 @@ function wireCarousels(root = document) {
   });
 }
 
+const ZOOM_SPRING = 'transform 340ms cubic-bezier(.18, 1.25, .32, 1)';
+
+// One gesture model for feed photos and the profile photo lightbox. Pinch
+// scales around the moving midpoint, one finger pans, and letting go returns
+// the photo to its resting transform with the same spring.
+function pinchZoom(target, opts = {}) {
+  const pointers = new Map();
+  const stage = opts.stage || (() => target);
+  const rect = opts.rect || (() => target.getBoundingClientRect());
+  let zoom = { z: 1, x: 0, y: 0 };
+  let pinch = null;
+  let pan = null;
+  let moved = false;
+  let springTimer = 0;
+
+  const apply = () => {
+    const el = stage();
+    if (el) el.style.transform = `translate3d(${zoom.x}px, ${zoom.y}px, 0) scale(${zoom.z})`;
+  };
+
+  const atRest = () => zoom.z <= 1.01 && Math.abs(zoom.x) < 1 && Math.abs(zoom.y) < 1;
+
+  const clearSpring = () => {
+    if (!springTimer) return;
+    clearTimeout(springTimer);
+    springTimer = 0;
+  };
+
+  const spring = () => {
+    const el = stage();
+    zoom = { z: 1, x: 0, y: 0 };
+    if (!el) return;
+    clearSpring();
+    el.style.transition = reducedMotion() ? 'none' : ZOOM_SPRING;
+    el.style.transform = 'translate3d(0, 0, 0) scale(1)';
+    if (reducedMotion()) return;
+    springTimer = setTimeout(() => {
+      springTimer = 0;
+      el.style.transition = '';
+    }, 380);
+  };
+
+  const centre = () => {
+    const r = rect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  };
+
+  const startPan = () => {
+    const only = pointers.values().next().value;
+    if (!only) return;
+    pan = { x: only.x, y: only.y, baseX: zoom.x, baseY: zoom.y };
+  };
+
+  const startPinch = () => {
+    const pts = [...pointers.values()];
+    if (pts.length < 2) return;
+    const c = centre();
+    const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+    pinch = {
+      dist: Math.max(1, Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y)),
+      z: zoom.z,
+      cx: c.x,
+      cy: c.y,
+      originX: (mid.x - c.x - zoom.x) / zoom.z,
+      originY: (mid.y - c.y - zoom.y) / zoom.z
+    };
+    pan = null;
+  };
+
+  const down = (e) => {
+    if (e.pointerType === 'mouse' && (!opts.mouse || e.button !== 0)) return;
+    if (opts.skip && e.target.closest && e.target.closest(opts.skip)) return;
+    try { target.setPointerCapture(e.pointerId); } catch (err) {}
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 1) {
+      moved = false;
+      clearSpring();
+      const el = stage();
+      if (el) el.style.transition = 'none';
+    }
+    if (pointers.size === 2) {
+      if (e.cancelable) e.preventDefault();
+      moved = true;
+      if (opts.start) opts.start();
+      startPinch();
+    } else if (pointers.size === 1 && !atRest() && (!opts.ready || opts.ready())) {
+      startPan();
+    }
+  };
+
+  const move = (e) => {
+    if (!pointers.has(e.pointerId)) return;
+    const last = pointers.get(e.pointerId);
+    if (!moved && Math.hypot(e.clientX - last.x, e.clientY - last.y) > 6) moved = true;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (opts.ready && !opts.ready()) return;
+    if (pointers.size >= 2 && pinch) {
+      if (e.cancelable) e.preventDefault();
+      const pts = [...pointers.values()];
+      const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+      const dist = Math.max(1, Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y));
+      zoom.z = clamp(pinch.z * dist / pinch.dist, 1, 4.5);
+      zoom.x = (mid.x - pinch.cx) - pinch.originX * zoom.z;
+      zoom.y = (mid.y - pinch.cy) - pinch.originY * zoom.z;
+      apply();
+    } else if (pan && pointers.size === 1) {
+      if (e.cancelable) e.preventDefault();
+      zoom.x = pan.baseX + (e.clientX - pan.x);
+      zoom.y = pan.baseY + (e.clientY - pan.y);
+      apply();
+    }
+  };
+
+  const up = (e) => {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.delete(e.pointerId);
+    if (pointers.size === 1) {
+      pinch = null;
+      startPan();
+      return;
+    }
+    if (pointers.size) return;
+    pinch = null;
+    pan = null;
+    const rest = atRest();
+    const wasMoved = moved;
+    moved = false;
+    if (!rest) spring();
+    if (opts.end) opts.end(rest, wasMoved);
+  };
+
+  target.addEventListener('pointerdown', down);
+  target.addEventListener('pointermove', move, { passive: false });
+  target.addEventListener('pointerup', up);
+  target.addEventListener('pointercancel', up);
+
+  return {
+    zoomBy(factor, clientX, clientY) {
+      const c = centre();
+      const qx = clientX - c.x;
+      const qy = clientY - c.y;
+      const ux = (qx - zoom.x) / zoom.z;
+      const uy = (qy - zoom.y) / zoom.z;
+      clearSpring();
+      const el = stage();
+      if (el) el.style.transition = 'none';
+      zoom.z = clamp(zoom.z * factor, 1, 4.5);
+      zoom.x = qx - ux * zoom.z;
+      zoom.y = qy - uy * zoom.z;
+      apply();
+    },
+    destroy() {
+      clearSpring();
+      target.removeEventListener('pointerdown', down);
+      target.removeEventListener('pointermove', move);
+      target.removeEventListener('pointerup', up);
+      target.removeEventListener('pointercancel', up);
+    }
+  };
+}
+
 function wirePhotoZooms(root = document) {
   $$('.post .media', root).forEach((media) => {
     if (media.dataset.zoomWired) return;
     media.dataset.zoomWired = '1';
 
-    const pointers = new Map();
     let overlay = null;
     let stage = null;
-    let zoom = { z: 1, x: 0, y: 0 };
     let frameRect = null;
-    let pinch = null;
-    let pan = null;
     let closing = false;
 
     const isCarousel = () => media.hasAttribute('data-carousel');
@@ -800,40 +965,6 @@ function wirePhotoZooms(root = document) {
         return slides[index] ? slides[index].querySelector('.zoom-layer') : null;
       }
       return media.querySelector('.photo-single .zoom-layer');
-    };
-
-    const apply = () => {
-      if (stage) stage.style.transform = `translate3d(${zoom.x}px, ${zoom.y}px, 0) scale(${zoom.z})`;
-    };
-
-    const close = () => {
-      if (!overlay) return;
-      const node = overlay;
-      const st = stage;
-      overlay = null;
-      stage = null;
-      pinch = null;
-      pan = null;
-      closing = true;
-      node.classList.add('closing');
-      if (reducedMotion() || (zoom.z <= 1.01 && Math.abs(zoom.x) < 1 && Math.abs(zoom.y) < 1)) {
-        node.remove();
-        media.classList.remove('zooming-source');
-        closing = false;
-        return;
-      }
-      st.style.transition = 'transform 340ms cubic-bezier(.18, 1.25, .32, 1)';
-      st.style.transform = 'translate3d(0, 0, 0) scale(1)';
-      let finished = false;
-      const finish = () => {
-        if (finished) return;
-        finished = true;
-        media.classList.remove('zooming-source');
-        if (node.isConnected) node.remove();
-        closing = false;
-      };
-      st.addEventListener('transitionend', finish, { once: true });
-      setTimeout(finish, 380);
     };
 
     const open = () => {
@@ -857,86 +988,35 @@ function wirePhotoZooms(root = document) {
       requestAnimationFrame(() => node.classList.add('on'));
       overlay = node;
       stage = st;
-      media.classList.add('zooming-source');
       frameRect = rect;
-      zoom = { z: 1, x: 0, y: 0 };
-      apply();
+      media.classList.add('zooming-source');
     };
 
-    const startPinch = () => {
-      const pts = Array.from(pointers.values());
-      if (pts.length < 2) return;
-      const dx = pts[0].x - pts[1].x;
-      const dy = pts[0].y - pts[1].y;
-      const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
-      const cx = frameRect.left + frameRect.width / 2;
-      const cy = frameRect.top + frameRect.height / 2;
-      pinch = {
-        dist: Math.max(1, Math.hypot(dx, dy)),
-        mid,
-        z: zoom.z,
-        cx,
-        cy,
-        originX: (mid.x - cx - zoom.x) / zoom.z,
-        originY: (mid.y - cy - zoom.y) / zoom.z
-      };
-      pan = null;
+    const finish = (node) => {
+      if (node.isConnected) node.remove();
+      media.classList.remove('zooming-source');
+      closing = false;
     };
 
-    media.addEventListener('pointerdown', (e) => {
-      if (e.pointerType === 'mouse') return;
-      if (e.target.closest('button, a')) return;
-      try { media.setPointerCapture(e.pointerId); } catch (err) {}
-      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-
-      if (pointers.size === 2) {
-        e.preventDefault();
-        open();
-        startPinch();
-      } else if (pointers.size === 1 && overlay) {
-        pan = { x: e.clientX, y: e.clientY, baseX: zoom.x, baseY: zoom.y };
+    pinchZoom(media, {
+      stage: () => stage,
+      rect: () => frameRect || media.getBoundingClientRect(),
+      skip: 'button, a',
+      start: open,
+      ready: () => !!overlay,
+      end(rest) {
+        if (!overlay) return;
+        const node = overlay;
+        overlay = null;
+        stage = null;
+        node.classList.add('closing');
+        if (rest || reducedMotion()) finish(node);
+        else {
+          closing = true;
+          setTimeout(() => finish(node), Math.max(380, VEIL_MS + 20));
+        }
       }
     });
-
-    media.addEventListener('pointermove', (e) => {
-      if (!pointers.has(e.pointerId)) return;
-      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (!overlay) return;
-
-      if (pointers.size >= 2 && pinch) {
-        e.preventDefault();
-        const pts = Array.from(pointers.values());
-        const dx = pts[0].x - pts[1].x;
-        const dy = pts[0].y - pts[1].y;
-        const dist = Math.max(1, Math.hypot(dx, dy));
-        const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
-        zoom.z = clamp(pinch.z * dist / pinch.dist, 1, 4.5);
-        zoom.x = (mid.x - pinch.cx) - pinch.originX * zoom.z;
-        zoom.y = (mid.y - pinch.cy) - pinch.originY * zoom.z;
-        apply();
-      } else if (pan && pointers.size === 1) {
-        e.preventDefault();
-        zoom.x = pan.baseX + (e.clientX - pan.x);
-        zoom.y = pan.baseY + (e.clientY - pan.y);
-        apply();
-      }
-    }, { passive: false });
-
-    const endPointer = (e) => {
-      if (!pointers.has(e.pointerId)) return;
-      pointers.delete(e.pointerId);
-      if (overlay && pointers.size === 1) {
-        const only = Array.from(pointers.values())[0];
-        pinch = null;
-        pan = { x: only.x, y: only.y, baseX: zoom.x, baseY: zoom.y };
-      } else if (!pointers.size) {
-        pinch = null;
-        pan = null;
-        if (overlay) close();
-      }
-    };
-    media.addEventListener('pointerup', endPointer);
-    media.addEventListener('pointercancel', endPointer);
   });
 }
 
@@ -948,17 +1028,24 @@ function injectIcons(root = document) {
 
 /* ------------------------------------------------------------------ avatars */
 
+function avatarCropCss(a) {
+  if (!a || !a.crop || !a.w || !a.h) return '';
+  return cropStyle(a, '1 / 1');
+}
+
 function av(u, size = 36, cls = '') {
   if (!u) u = { id: 'x', name: '?' };
   const fallback = `<span class="av-fallback" aria-hidden="true">${initials(u.name)}</span>`;
+  const crop = avatarCropCss(u.avatar);
+  const imgAttrs = crop ? ` class="cropped" style="${crop}"` : '';
   if (u.avatar && u.avatar.d) {
-    return `<span class="av has-img ${cls}" style="--av:${size}px">${fallback}<img src="${esc(u.avatar.d)}" alt="" width="${size}" height="${size}" decoding="async" draggable="false"></span>`;
+    return `<span class="av has-img ${cls}" style="--av:${size}px">${fallback}<img src="${esc(u.avatar.d)}" alt="" width="${size}" height="${size}" decoding="async" draggable="false"${imgAttrs}></span>`;
   }
   if (u.avatar && u.avatar.m) {
-    return `<span class="av has-img ${cls}" style="--av:${size}px">${fallback}<img data-media="${u.avatar.m}" alt="" width="${size}" height="${size}" draggable="false"></span>`;
+    return `<span class="av has-img ${cls}" style="--av:${size}px">${fallback}<img data-media="${u.avatar.m}" alt="" width="${size}" height="${size}" draggable="false"${imgAttrs}></span>`;
   }
   if (u.avatar && u.avatar.s) {
-    return `<span class="av has-img ${cls}" style="--av:${size}px">${fallback}<img src="assets/img/${esc(u.avatar.s)}.avif" alt="" width="${size}" height="${size}" loading="lazy" decoding="async" draggable="false"></span>`;
+    return `<span class="av has-img ${cls}" style="--av:${size}px">${fallback}<img src="assets/img/${esc(u.avatar.s)}.avif" alt="" width="${size}" height="${size}" loading="lazy" decoding="async" draggable="false"${imgAttrs}></span>`;
   }
   return `<span class="av t${tone(u.id)} ${cls}" style="--av:${size}px" aria-hidden="true">${initials(u.name)}</span>`;
 }
@@ -999,6 +1086,7 @@ function postCard(p, opts = {}) {
       <button class="act" type="button" ${detail ? 'data-act="replyfocus"' : `data-act="open" data-id="${p.id}"`} aria-label="${replyLabel}" title="Reply">${icon('message-circle')}<span data-count="replies">${replies.length || ''}</span></button>
       <button class="act saved${saved ? ' on' : ''}" type="button" data-act="bookmark" data-id="${p.id}" aria-pressed="${saved}" aria-label="${saved ? 'Remove from saved' : 'Save post'}" title="${saved ? 'Remove from saved' : 'Save'}">${icon('bookmark')}</button>
       <button class="act" type="button" data-act="share" data-id="${p.id}" aria-label="Share post" title="Share">${icon('share')}</button>
+      ${p.userId === 'me' ? `<button class="act" type="button" data-act="post-menu" data-id="${p.id}" aria-haspopup="dialog" aria-label="Post options" title="Post options">${icon('more-horizontal')}</button>` : ''}
     </footer>
   </article>`;
 }
@@ -1032,7 +1120,7 @@ function profileHead(u, count, isMe) {
   const follows = !isMe && isFollowing('me', u.id);
   return `<div class="profile-top">
     <div class="profile-id">
-      ${av(u, 76)}
+      <button class="profile-av" type="button" data-act="avatar" data-id="${u.id}" aria-label="View ${esc(u.name)} profile photo" title="View ${esc(u.name)} profile photo">${av(u, 76)}</button>
       <div class="profile-idtext">
         <h2 class="p-name">${esc(u.name)}</h2>
         <div class="p-handle">@${esc(u.handle)}</div>
@@ -1075,6 +1163,32 @@ function toast(msg) {
   toastTimer = setTimeout(() => el.classList.remove('show'), 2000);
 }
 
+function processShow(total) {
+  const veil = $('#process-veil');
+  if (!veil) return;
+  const note = $('#process-note');
+  if (note) note.textContent = total > 1 ? `Optimising ${total} photos on this device.` : 'Optimising one photo on this device.';
+  const fill = $('#process-fill');
+  if (fill) fill.style.transform = 'scaleX(0)';
+  veil.setAttribute('aria-hidden', 'false');
+  requestAnimationFrame(() => veil.classList.add('on'));
+}
+
+function processStep(done, total) {
+  const fill = $('#process-fill');
+  if (fill) fill.style.transform = `scaleX(${total ? Math.min(1, done / total).toFixed(3) : 0})`;
+  const note = $('#process-note');
+  if (note && total > 1) note.textContent = `${Math.min(done, total)} of ${total} photos done.`;
+}
+
+function processHide() {
+  const veil = $('#process-veil');
+  if (!veil) return;
+  veil.classList.remove('on');
+  veil.setAttribute('aria-hidden', 'true');
+}
+
+
 /* ------------------------------------------------------------------ views */
 
 let profileTab = 'posts';
@@ -1102,68 +1216,189 @@ function renderFeed(freshId) {
 function parseSearch(q) {
   const tokens = q.split(/\s+/).filter(Boolean);
   const tags = tokens.filter((t) => t.startsWith('#')).map((t) => t.slice(1).toLowerCase()).filter(Boolean);
-  const words = tokens.filter((t) => !t.startsWith('#')).map((t) => t.toLowerCase());
-  return { tags, words };
+  const handles = tokens.filter((t) => t.startsWith('@')).map((t) => t.slice(1).toLowerCase()).filter(Boolean);
+  const words = tokens.filter((t) => !t.startsWith('#') && !t.startsWith('@')).map((t) => t.toLowerCase());
+  return { tags, handles, words };
+}
+
+const replyCount = (id) => repliesOf(id).length;
+
+function postScore(p) {
+  const hours = Math.max(.25, (Date.now() - p.ts) / 3600000);
+  return (p.likes + replyCount(p.id) * 3 + 4) / Math.pow(hours + 2, .55);
+}
+
+function interleaveByUser(posts) {
+  const buckets = new Map();
+  for (const p of posts) {
+    if (!buckets.has(p.userId)) buckets.set(p.userId, []);
+    buckets.get(p.userId).push(p);
+  }
+  const out = [];
+  let more = true;
+  while (more) {
+    more = false;
+    for (const list of buckets.values()) {
+      if (!list.length) continue;
+      out.push(list.shift());
+      more = true;
+    }
+  }
+  return out;
+}
+
+function discoverPosts() {
+  const followed = new Set(['me', ...followingOf('me')]);
+  let pool = sortedPosts().filter((p) => !followed.has(p.userId));
+  if (!pool.length) pool = sortedPosts().filter((p) => p.userId !== 'me');
+  const ranked = pool.slice().sort((a, b) => postScore(b) - postScore(a) || b.ts - a.ts);
+  return interleaveByUser(ranked);
+}
+
+function suggestedPeople(limit = 5) {
+  const followed = new Set(followingOf('me'));
+  return state.users
+    .filter((u) => u.id !== 'me' && !followed.has(u.id))
+    .map((u) => ({
+      u,
+      mutuals: followedByFriends(u.id),
+      followers: followersOf(u.id).length,
+      posts: state.posts.filter((p) => p.userId === u.id).length
+    }))
+    .filter((row) => row.posts > 0)
+    .sort((a, b) => b.mutuals.length - a.mutuals.length || b.followers - a.followers || b.posts - a.posts || a.u.name.localeCompare(b.u.name))
+    .slice(0, limit);
+}
+
+function suggestRow({ u, mutuals }) {
+  const on = isFollowing('me', u.id);
+  const by = mutuals.slice(0, 2).map((m) => esc(m.name.split(' ')[0])).join(', ');
+  const note = mutuals.length
+    ? `Followed by ${by}${mutuals.length > 2 ? ` +${mutuals.length - 2}` : ''}`
+    : `@${esc(u.handle)} · ${esc(u.bio)}`;
+  return `<div class="suggest">
+    <button class="suggest-main" type="button" data-act="profile" data-id="${u.id}">
+      ${av(u, 40)}
+      <span class="suggest-text">
+        <span class="suggest-name">${esc(u.name)}</span>
+        <span class="suggest-sub">${note}</span>
+      </span>
+    </button>
+    <button class="btn ghost sm suggest-follow" type="button" data-act="follow" data-id="${u.id}" data-follow-btn="${u.id}" aria-pressed="${on}" aria-label="${on ? 'Unfollow' : 'Follow'} ${esc(u.name)}">${on ? `${icon('check')}Following` : 'Follow'}</button>
+  </div>`;
+}
+
+function searchPeople(q) {
+  const { tags, handles, words } = parseSearch(q);
+  if (tags.length && !handles.length && !words.length) return [];
+  const rows = state.users.filter((u) => {
+    const name = u.name.toLowerCase();
+    const handle = u.handle.toLowerCase();
+    const hay = `${name} ${handle} ${u.bio.toLowerCase()}`;
+    if (handles.some((h) => !handle.includes(h) && !name.includes(h))) return false;
+    return words.every((w) => hay.includes(w));
+  });
+  return rows.sort((a, b) => {
+    const ah = a.handle.toLowerCase();
+    const bh = b.handle.toLowerCase();
+    const an = a.name.toLowerCase();
+    const bn = b.name.toLowerCase();
+    const aExact = handles.some((h) => ah === h) ? 1 : 0;
+    const bExact = handles.some((h) => bh === h) ? 1 : 0;
+    if (aExact !== bExact) return bExact - aExact;
+    const aStart = handles.some((h) => ah.startsWith(h) || an.startsWith(h)) ? 1 : 0;
+    const bStart = handles.some((h) => bh.startsWith(h) || bn.startsWith(h)) ? 1 : 0;
+    if (aStart !== bStart) return bStart - aStart;
+    return followersOf(b.id).length - followersOf(a.id).length || a.name.localeCompare(b.name);
+  });
+}
+
+function searchPosts(q) {
+  const { tags: qTags, handles, words } = parseSearch(q);
+  const rows = [];
+  for (const p of sortedPosts()) {
+    const u = user(p.userId);
+    const pTags = (p.tags || []).map((t) => t.toLowerCase());
+    if (qTags.some((t) => !pTags.some((tag) => tag.startsWith(t)))) continue;
+    if (handles.length && !handles.some((h) => u.handle.toLowerCase().includes(h) || u.name.toLowerCase().includes(h))) continue;
+    const text = (p.text || '').toLowerCase();
+    const hay = `${text} ${u.name} ${u.handle} ${pTags.join(' ')}`.toLowerCase();
+    if (words.some((w) => !hay.includes(w))) continue;
+    let score = 0;
+    for (const t of qTags) score += pTags.includes(t) ? 14 : 10;
+    for (const w of words) {
+      if (text.includes(w)) score += 8;
+      if (u.name.toLowerCase().includes(w) || u.handle.toLowerCase().includes(w)) score += 5;
+      if (pTags.some((tag) => tag.includes(w))) score += 3;
+    }
+    if (handles.length) score += 20;
+    score += Math.log1p(p.likes + replyCount(p.id) * 2) * 2;
+    rows.push({ p, score });
+  }
+  return rows.sort((a, b) => b.score - a.score || b.p.ts - a.p.ts).map((row) => row.p);
+}
+
+function matchingTags(q) {
+  const { tags, words } = parseSearch(q);
+  const needles = [...tags, ...words];
+  if (!needles.length) return [];
+  const counts = new Map();
+  for (const p of state.posts) for (const t of (p.tags || [])) counts.set(t, (counts.get(t) || 0) + 1);
+  return [...counts.entries()]
+    .filter(([t]) => needles.some((n) => t.startsWith(n) || t.includes(n)))
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 6);
 }
 
 function renderExplore() {
   const body = $('#explore-body');
   const q = exploreQuery.trim().toLowerCase();
-  const posts = sortedPosts();
-
   if (!q) {
+    const posts = sortedPosts();
     const counts = new Map();
     for (const p of posts) for (const t of (p.tags || [])) counts.set(t, (counts.get(t) || 0) + 1);
     const tags = [...counts.entries()]
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      .slice(0, 12);
+      .slice(0, 8);
+    const people = suggestedPeople(5);
+    const discover = discoverPosts();
     const photos = [];
-    const seenPhotos = new Set();
-    const photoPosts = posts
-      .filter((p) => p.images && p.images.length)
-      .sort((a, b) => (b.images.length - a.images.length) || (b.ts - a.ts));
-    for (const p of photoPosts) {
-      if (photos.length >= 12) break;
-      const im = p.images.find((image) => !seenPhotos.has(image.s || image.m));
-      if (!im) continue;
-      seenPhotos.add(im.s || im.m);
-      photos.push({ p, im });
+    const seen = new Set();
+    for (const p of posts.slice().sort((a, b) => b.ts - a.ts)) {
+      for (const im of (p.images || [])) {
+        const key = im.s || im.m;
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        photos.push({ p, im });
+        if (photos.length >= 6) break;
+      }
+      if (photos.length >= 6) break;
     }
-
     body.innerHTML = `
       <div class="section"><h3 class="section-h">Trending</h3></div>
       <div class="tags">${tags.map(([t, n]) => `<button class="tag" type="button" data-act="tag" data-q="#${esc(t)}">#${esc(t)}<span class="tag-n">${n}</span></button>`).join('')}</div>
-      <div class="section"><h3 class="section-h">People</h3></div>
-      <div>${state.users.map(personRow).join('')}</div>
-      <div class="section"><h3 class="section-h">Photos</h3></div>
-      ${photos.length ? photoGrid(photos, true) : '<p class="empty">No photos yet.</p>'}
+      ${people.length ? `<div class="section"><h3 class="section-h">People to follow</h3></div><div>${people.map(suggestRow).join('')}</div>` : ''}
+      <div class="section"><h3 class="section-h">Discover</h3></div>
+      <div id="explore-discover-list">${discover.slice(0, 6).map((p) => postCard(p)).join('')}</div>
+      ${discover.length > 6 ? `<div class="more-wrap"><button class="btn ghost sm" type="button" data-act="explore-more" data-kind="discover" data-offset="6">Show more posts</button></div>` : ''}
+      ${photos.length ? `<div class="section"><h3 class="section-h">Photos</h3></div>${photoGrid(photos, true)}` : ''}
     `;
     hydrate(body);
+    scheduleScrollbar();
     return;
   }
 
-  const { tags: qTags, words } = parseSearch(q);
-  const people = qTags.length ? [] : state.users.filter((u) => {
-    const hay = `${u.name} ${u.handle} ${u.bio}`.toLowerCase();
-    return words.every((w) => hay.includes(w));
-  });
-  const found = posts.filter((p) => {
-    const tags = (p.tags || []).map((t) => t.toLowerCase());
-    if (qTags.some((t) => !tags.some((tag) => tag.startsWith(t)))) return false;
-    if (!words.length) return true;
-    const u = user(p.userId);
-    const hay = `${p.text || ''} ${u.name} ${u.handle} ${tags.join(' ')}`.toLowerCase();
-    return words.every((w) => hay.includes(w));
-  }).slice(0, 30);
-
-  const heading = qTags.length
-    ? `Tagged ${qTags.map((t) => '#' + esc(t)).join(' ')}`
-    : 'Posts';
-
+  const { tags: qTags, handles } = parseSearch(q);
+  const tags = matchingTags(q);
+  const people = searchPeople(q);
+  const found = searchPosts(q);
+  const heading = qTags.length ? `Tagged ${qTags.map((t) => '#' + esc(t)).join(' ')}` : (handles.length ? `From @${esc(handles[0])}` : 'Posts');
+  const empty = !people.length && !found.length;
   body.innerHTML = `
-    ${people.length ? `<div class="section"><h3 class="section-h">People</h3></div><div>${people.map(personRow).join('')}</div>` : ''}
-    <div class="section"><h3 class="section-h">${heading}</h3></div>
-    ${found.length ? found.map((p) => postCard(p)).join('') : `<p class="empty">${qTags.length ? `No posts tagged #${esc(qTags[0])} yet.` : 'No posts found.'}</p>`}
+    ${tags.length ? `<div class="section"><h3 class="section-h">Tags</h3></div><div class="tags">${tags.map(([t, n]) => `<button class="tag" type="button" data-act="tag" data-q="#${esc(t)}">#${esc(t)}<span class="tag-n">${n}</span></button>`).join('')}</div>` : ''}
+    ${people.length ? `<div class="section"><h3 class="section-h">People <span class="section-n">${people.length}</span></h3></div><div id="explore-people-list">${people.slice(0, 5).map(personRow).join('')}</div>${people.length > 5 ? `<div class="more-wrap"><button class="btn ghost sm" type="button" data-act="explore-more" data-kind="people" data-offset="5">Show more people</button></div>` : ''}` : ''}
+    <div class="section"><h3 class="section-h">${heading}${found.length ? ` <span class="section-n">${found.length}</span>` : ''}</h3></div>
+    ${empty ? `<p class="empty">No results for "${esc(q)}".<br>Try a name, @handle, or #tag.</p>` : `<div id="explore-search-list">${found.slice(0, 12).map((p) => postCard(p)).join('') || '<p class="empty">No matching posts.</p>'}</div>${found.length > 12 ? `<div class="more-wrap"><button class="btn ghost sm" type="button" data-act="explore-more" data-kind="search" data-offset="12">Show more posts</button></div>` : ''}`}
   `;
   hydrate(body);
   scheduleScrollbar();
@@ -1194,7 +1429,10 @@ function renderChats() {
           <span class="chat-name">${esc(u.name)}</span>
           ${last ? `<time class="chat-time" datetime="${new Date(last.ts).toISOString()}" data-ts="${last.ts}">${rel(last.ts)}</time>` : ''}
         </div>
-        <div class="chat-last">${n ? '<span class="unread-dot"></span>' : ''}<span class="preview">${esc(preview)}</span></div>
+        <div class="chat-last">
+          <span class="preview">${esc(preview)}</span>
+          ${n ? `<span class="unread-count" aria-hidden="true">${n}</span>` : ''}
+        </div>
       </div>
     </button>`;
   }).join('') || '<p class="empty">No conversations yet.</p>';
@@ -1599,6 +1837,10 @@ function restoreLayers(list, opts = {}) {
             if (!postById(d.id)) continue;
             openPost(d.id);
             break;
+          case 'avatar':
+            if (!d.id || !knownUser(d.id)) continue;
+            openAvatarView(d.id);
+            break;
           case 'chat':
             if (!state.chats.some((c) => c.id === d.id)) continue;
             openChat(d.id);
@@ -1815,12 +2057,20 @@ function mountLayer(html, opts = {}) {
 
 function closeVisual(entry, immediate = false) {
   entry.el.classList.remove('open');
+  entry.el.classList.add('closing');
   if (entry.cleanup) {
     entry.cleanup();
     entry.cleanup = null;
   }
-  if (immediate) entry.el.remove();
-  else setTimeout(() => entry.el.remove(), matchMedia('(min-width: 900px)').matches ? 380 : 330);
+  const done = () => {
+    entry.el.remove();
+    if (entry.afterClose) {
+      entry.afterClose();
+      entry.afterClose = null;
+    }
+  };
+  if (immediate) done();
+  else setTimeout(done, entry.closeMs || (matchMedia('(min-width: 900px)').matches ? 380 : 330));
 }
 
 function closeAllLayers({ animate = true, restore = true } = {}) {
@@ -2152,6 +2402,154 @@ function openMyComments() {
   draw();
 }
 
+
+let activeAvatar = null;
+let avatarMorphToken = 0;
+let avatarMorphSource = null;
+
+// Matches --t-layer and --t-veil.
+const AVATAR_MORPH_CLOSE = 300;
+const VEIL_MS = 340;
+
+function hideAvatarSource(el) {
+  if (!el) return 0;
+  if (avatarMorphSource && avatarMorphSource !== el) {
+    avatarMorphSource.style.opacity = '';
+    avatarMorphSource.style.pointerEvents = '';
+  }
+  avatarMorphSource = el;
+  el.style.opacity = '0';
+  el.style.pointerEvents = 'none';
+  return ++avatarMorphToken;
+}
+
+function showAvatarSource(token) {
+  if (!token || token !== avatarMorphToken) return;
+  if (avatarMorphSource) {
+    avatarMorphSource.style.opacity = '';
+    avatarMorphSource.style.pointerEvents = '';
+  }
+  avatarMorphSource = null;
+}
+
+function placeAvatarFrame(frame, base, target) {
+  if (!frame || !base.width || !target.width) return;
+  const scale = target.width / base.width;
+  const x = target.left + target.width / 2 - (base.left + base.width / 2);
+  const y = target.top + target.height / 2 - (base.top + base.height / 2);
+  frame.style.setProperty('--fx', `${x}px`);
+  frame.style.setProperty('--fy', `${y}px`);
+  frame.style.setProperty('--fs', String(scale));
+}
+
+function openAvatarView(id, sourceEl = null) {
+  if (!knownUser(id)) return null;
+  if (activeAvatar && activeAvatar.entry.el.isConnected) return activeAvatar;
+
+  const u = user(id);
+  const a = u.avatar || null;
+  const src = a && a.d ? a.d : null;
+  const media = a && !src && a.m ? a.m : null;
+  const seed = a && !src && !media && a.s ? a.s : null;
+  const crop = avatarCropCss(a);
+  const imgAttrs = crop ? ` class="cropped" style="${crop}"` : '';
+  let entry = null;
+  let gesture = null;
+  let frame = null;
+  let frameRect = null;
+  let sourceRect = null;
+  let morphToken = 0;
+
+  if (sourceEl && sourceEl.isConnected) {
+    const r = sourceEl.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) {
+      sourceRect = { left: r.left, top: r.top, width: r.width, height: r.height };
+    }
+  }
+
+  const onResize = () => {
+    if (!frame || !frameRect || !entry.el.classList.contains('open')) return;
+    const r = frame.getBoundingClientRect();
+    if (r.width > 0) frameRect = { left: r.left, top: r.top, width: r.width, height: r.height };
+  };
+
+  entry = mountLayer(`
+    <div class="avatar-view-veil" data-act="close" aria-hidden="true"></div>
+    <div class="avatar-view-center">
+      <div class="avatar-view-frame">
+        <div class="avatar-view-stage" id="avatar-view-stage">
+          ${src ? `<img src="${esc(src)}" alt="${esc(u.name)}" draggable="false"${imgAttrs}>`
+            : media ? `<img data-media="${media}" alt="${esc(u.name)}" draggable="false"${imgAttrs}>`
+            : seed ? `<img src="assets/img/${esc(seed)}.avif" alt="${esc(u.name)}" draggable="false"${imgAttrs}>`
+            : `<span class="avatar-view-fallback">${initials(u.name)}</span>`}
+        </div>
+      </div>
+    </div>
+  `, {
+    cls: 'avatar-view-layer',
+    descriptor: { type: 'avatar', id },
+    onClose() {
+      if (gesture) {
+        gesture.destroy();
+        gesture = null;
+      }
+      removeEventListener('resize', onResize);
+      if (frameRect && sourceEl && sourceEl.isConnected) {
+        const r = sourceEl.getBoundingClientRect();
+        if (r.width > 0) placeAvatarFrame(frame, frameRect, r);
+      }
+      if (activeAvatar && activeAvatar.entry.el === entry.el) activeAvatar = null;
+    }
+  });
+
+  entry.el.setAttribute('role', 'dialog');
+  entry.el.setAttribute('aria-modal', 'true');
+  entry.el.setAttribute('aria-label', `Profile photo of ${u.name}`);
+
+  const stage = $('#avatar-view-stage', entry.el);
+  frame = $('.avatar-view-frame', entry.el);
+  if (!stage || !frame) return entry;
+
+  if (sourceRect && !entry.el.classList.contains('open')) {
+    // Start the photo exactly over the tapped avatar, then let the open
+    // class carry it to the centred stage. Transform only, no layout.
+    frame.style.transition = 'none';
+    frame.style.setProperty('--fx', '0px');
+    frame.style.setProperty('--fy', '0px');
+    frame.style.setProperty('--fs', '1');
+    const r = frame.getBoundingClientRect();
+    if (r.width > 0) {
+      frameRect = { left: r.left, top: r.top, width: r.width, height: r.height };
+      placeAvatarFrame(frame, frameRect, sourceRect);
+      frame.style.setProperty('--fo', '1');
+      morphToken = hideAvatarSource(sourceEl);
+      void frame.offsetWidth;
+    }
+    frame.style.transition = '';
+    addEventListener('resize', onResize);
+  }
+
+  if (morphToken) entry.afterClose = () => showAvatarSource(morphToken);
+  entry.closeMs = Math.max(AVATAR_MORPH_CLOSE + 40, VEIL_MS + 20);
+
+  gesture = pinchZoom(stage, {
+    mouse: true,
+    rect: () => frameRect || frame.getBoundingClientRect(),
+    end(rest, moved) {
+      if (rest && !moved) history.back();
+    }
+  });
+
+  stage.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 320 : e.deltaY;
+    gesture.zoomBy(clamp(Math.exp(-delta * .0016), .85, 1.2), e.clientX, e.clientY);
+  }, { passive: false });
+
+  activeAvatar = { entry };
+  return activeAvatar;
+}
+
 function openPost(id) {
   const p = postById(id);
   if (!p) return;
@@ -2164,7 +2562,7 @@ function openPost(id) {
     </div>
     <form class="replybar" id="reply-form">
       <input class="field" name="reply" type="text" maxlength="300" placeholder="Write a reply" autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="true" enterkeyhint="send" aria-autocomplete="none" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" aria-label="Write a reply">
-      <button class="btn sm" type="submit">Reply</button>
+      <button class="send" type="submit" aria-label="Send reply">${icon('arrow-up')}</button>
     </form>
   `, { cls: 'detail-layer', descriptor: { type: 'post', id } });
 
@@ -2233,7 +2631,7 @@ function openChat(chatId) {
     <div class="msgs" id="thread-msgs">${msgs.map(msgHtml).join('')}</div>
     <form class="composer" id="thread-form">
       <input class="field" name="message" type="text" maxlength="500" placeholder="Message" autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="true" enterkeyhint="send" aria-autocomplete="none" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" aria-label="Message ${esc(u.name)}">
-      <button class="send" type="submit" aria-label="Send">${icon('send')}</button>
+      <button class="send" type="submit" aria-label="Send">${icon('arrow-up')}</button>
     </form>
   `, {
     cls: 'thread',
@@ -2305,6 +2703,75 @@ function scheduleReply(chat) {
 
 /* ------------------------------------------------------------------ media ingest */
 
+
+/* ------------------------------------------------------------------ avif */
+
+const scriptLoads = new Map();
+
+function loadScript(src) {
+  if (scriptLoads.has(src)) return scriptLoads.get(src);
+  const pending = new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    el.src = src;
+    el.async = true;
+    el.onload = resolve;
+    el.onerror = () => reject(new Error('Could not load ' + src));
+    document.head.append(el);
+  });
+  scriptLoads.set(src, pending);
+  return pending;
+}
+
+let avifWasm = null;
+
+function avifWasmBinary() {
+  if (avifWasm) return avifWasm;
+  avifWasm = (async () => {
+    if (!('DecompressionStream' in window)) return null;
+    await loadScript('assets/avif/wasm_avif_b64.js');
+    const b64 = window.AVIF_WASM_GZ;
+    if (!b64) return null;
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+    return new Response(stream).arrayBuffer();
+  })().catch(() => null);
+  return avifWasm;
+}
+
+async function encodeAvif(canvas) {
+  try {
+    const wasmBinary = await avifWasmBinary();
+    if (!wasmBinary) return null;
+    await loadScript('assets/avif/wasm_avif.js');
+    if (typeof window.wasm_avif !== 'function') return null;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    const mod = await window.wasm_avif({ wasmBinary: wasmBinary.slice(0) });
+    const out = mod.encode(
+      new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
+      canvas.width,
+      canvas.height,
+      4,
+      {
+        minQuantizer: 20,
+        maxQuantizer: 26,
+        minQuantizerAlpha: 24,
+        maxQuantizerAlpha: 30,
+        tileRowsLog2: 0,
+        tileColsLog2: 0,
+        speed: 8
+      },
+      3
+    );
+    mod.free();
+    if (!out || out.error || !out.length) return null;
+    return new Blob([out], { type: 'image/avif' });
+  } catch (e) {
+    return null;
+  }
+}
+
 async function compressImage(file, max = 1600, quality = .82) {
   let src, w, h, cleanup = () => {};
   try {
@@ -2336,13 +2803,89 @@ async function compressImage(file, max = 1600, quality = .82) {
   ctx.drawImage(src, 0, 0, cw, ch);
   cleanup();
 
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/webp', quality));
+  await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+  let blob = await encodeAvif(canvas);
+  let type = 'image/avif';
+  if (!blob) {
+    blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/webp', quality));
+    type = 'image/webp';
+  }
   if (!blob) return null;
   const id = uid('m');
   try { await idbPut(id, blob); } catch (e) { return null; }
-  state.uploaded[id] = { w: cw, h: ch };
+  state.uploaded[id] = { w: cw, h: ch, type };
   save();
-  return { m: id, w: cw, h: ch };
+  return { m: id, w: cw, h: ch, type };
+}
+
+
+async function loadBakeSource(a) {
+  let url = null;
+  let revoke = false;
+  if (a.m) {
+    const blob = await idbGet(a.m);
+    if (!blob) return null;
+    url = URL.createObjectURL(blob);
+    revoke = true;
+  } else if (a.s) {
+    url = `assets/img/${a.s}-800.avif`;
+  }
+  if (!url) return null;
+  const img = new Image();
+  img.decoding = 'async';
+  const loaded = new Promise((resolve) => {
+    img.onload = () => resolve(true);
+    img.onerror = () => resolve(false);
+  });
+  img.src = url;
+  if (!(await loaded)) {
+    if (revoke) URL.revokeObjectURL(url);
+    return null;
+  }
+  return { img, cleanup: () => { if (revoke) URL.revokeObjectURL(url); } };
+}
+
+async function bakeCrop(a, ratioCss, maxEdge) {
+  const src = await loadBakeSource(a);
+  if (!src) return null;
+  try {
+    const F = ratioValue(ratioCss);
+    const w = Math.max(1, a.w || src.img.naturalWidth);
+    const h = Math.max(1, a.h || src.img.naturalHeight);
+    const A = w / h;
+    const sw0 = Math.min(w, h * F);
+    const sh0 = sw0 / F;
+    const c = normalizeCrop(a.crop);
+    const sw = sw0 / c.z;
+    const sh = sh0 / c.z;
+    const left = (w - sw0) / 2 + (sw0 - sw) / 2 * (1 - c.x);
+    const top = (h - sh0) / 2 + (sh0 - sh) / 2 * (1 - c.y);
+    const outW = F >= 1 ? maxEdge : Math.max(1, Math.round(maxEdge * F));
+    const outH = F >= 1 ? Math.max(1, Math.round(maxEdge / F)) : maxEdge;
+    const canvas = document.createElement('canvas');
+    canvas.width = outW;
+    canvas.height = outH;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(src.img, left, top, sw, sh, 0, 0, outW, outH);
+    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    let blob = await encodeAvif(canvas);
+    let type = 'image/avif';
+    if (!blob) {
+      blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/webp', .82));
+      type = 'image/webp';
+    }
+    if (!blob) return null;
+    const id = uid('m');
+    try { await idbPut(id, blob); } catch (e) { return null; }
+    state.uploaded[id] = { w: outW, h: outH, type };
+    save();
+    return { m: id, w: outW, h: outH, type };
+  } finally {
+    src.cleanup();
+  }
 }
 
 function discardMedia(id) {
@@ -2356,6 +2899,183 @@ function discardMedia(id) {
   save();
 }
 
+
+/* ------------------------------------------------------------------ post options */
+
+function refreshPostLayers(id) {
+  const p = postById(id);
+  if (!p) return;
+  for (const entry of layers) {
+    if (!entry.descriptor || entry.descriptor.type !== 'post' || entry.descriptor.id !== id) continue;
+    const card = $(`.post[data-post="${id}"]`, entry.el);
+    if (!card) continue;
+    card.outerHTML = postCard(p, { detail: true });
+    hydrate(entry.el);
+  }
+  scheduleScrollbar();
+}
+
+function deletePost(id) {
+  const p = postById(id);
+  if (!p || p.userId !== 'me') return;
+  const media = (p.images || []).map((im) => im.m).filter(Boolean);
+  state.posts = state.posts.filter((post) => post.id !== id);
+  delete state.replies[id];
+  state.liked = state.liked.filter((postId) => postId !== id);
+  state.bookmarked = state.bookmarked.filter((postId) => postId !== id);
+  for (const m of media) {
+    if (!state.posts.some((post) => (post.images || []).some((im) => im.m === m))) discardMedia(m);
+  }
+  save();
+  renderFeed();
+  renderProfile();
+  renderExplore();
+  refreshCollectionLayers('saved');
+  refreshCollectionLayers('liked');
+  refreshCollectionLayers('comments');
+}
+
+function closeSheetThen(fn) {
+  if (!layers.length) { fn(); return; }
+  history.back();
+  setTimeout(fn, 340);
+}
+
+function openPostMenu(id) {
+  const p = postById(id);
+  if (!p || p.userId !== 'me') return;
+
+  let drag = null;
+  let dragFrame = 0;
+  let deleted = false;
+  let deleting = false;
+  let deleteTimer = 0;
+
+  const entry = mountLayer(`
+    <div class="sheet-backdrop" data-act="close" aria-hidden="true"></div>
+    <div class="action-sheet" role="dialog" aria-modal="true" aria-label="Post options" data-view="actions">
+      <div class="sheet-grip" aria-hidden="true"></div>
+      <div class="sheet-stage">
+        <div class="sheet-view" data-view="actions">
+          <button class="sheet-action" type="button" data-act="edit-post" data-id="${p.id}">${icon('pen')}<span>Edit post</span></button>
+          <button class="sheet-action danger" type="button" data-act="menu-delete" data-id="${p.id}">${icon('trash-2')}<span>Delete post</span></button>
+          <button class="sheet-cancel" type="button" data-act="close">Cancel</button>
+        </div>
+        <div class="sheet-view sheet-confirm is-off" data-view="confirm" aria-hidden="true">
+          <h3>Delete post?</h3>
+          <p>This cannot be undone.</p>
+          <button class="sheet-delete" type="button" data-act="menu-confirm" data-id="${p.id}">Delete post</button>
+          <button class="sheet-back" type="button" data-act="menu-back">Cancel</button>
+        </div>
+      </div>
+    </div>
+  `, {
+    up: true,
+    cls: 'post-menu-layer',
+    descriptor: { type: 'post-menu', id },
+    onClose() {
+      removeEventListener('pointermove', onDragMove);
+      removeEventListener('pointerup', onDragEnd);
+      removeEventListener('pointercancel', onDragEnd);
+      if (dragFrame) cancelAnimationFrame(dragFrame);
+      if (deleteTimer) clearTimeout(deleteTimer);
+      dragFrame = 0;
+      deleteTimer = 0;
+      drag = null;
+      if (deleted) {
+        setTimeout(() => toast('Post deleted'), 320);
+        if (layers.some((e) => e.descriptor && e.descriptor.type === 'post' && e.descriptor.id === id)) {
+          setTimeout(() => history.back(), 0);
+        }
+      }
+    }
+  });
+  entry.closeMs = VEIL_MS + 20;
+
+  const el = entry.el;
+  const sheet = $('.action-sheet', el);
+
+  function showView(view) {
+    sheet.dataset.view = view;
+    $$('.sheet-view', el).forEach((box) => {
+      const off = box.dataset.view !== view;
+      box.classList.toggle('is-off', off);
+      box.setAttribute('aria-hidden', String(off));
+    });
+    const target = view === 'confirm' ? $('[data-act="menu-back"]', el) : $('[data-act="menu-delete"]', el);
+    if (target) target.focus({ preventScroll: true });
+  }
+
+  function onDragMove(e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dy = Math.max(0, e.clientY - drag.y);
+    if (!drag.active && dy < 6) return;
+    if (!drag.active) {
+      drag.active = true;
+      sheet.classList.add('dragging');
+    }
+    drag.dy = dy;
+    if (dragFrame) return;
+    dragFrame = requestAnimationFrame(() => {
+      dragFrame = 0;
+      if (!drag) return;
+      sheet.style.transform = `translate3d(0, ${drag.dy}px, 0)`;
+    });
+  }
+
+  function onDragEnd(e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    const d = drag;
+    drag = null;
+    if (dragFrame) { cancelAnimationFrame(dragFrame); dragFrame = 0; }
+    if (!d.active) return;
+    suppressClickUntil = performance.now() + 120;
+    const quick = d.dy / Math.max(1, performance.now() - d.t) > .55;
+    if (d.dy > 90 || quick) {
+      sheet.classList.remove('dragging');
+      sheet.style.transform = 'translate3d(0, 100%, 0)';
+      history.back();
+    } else {
+      sheet.classList.remove('dragging');
+      sheet.style.transform = '';
+    }
+  }
+
+  sheet.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    drag = { id: e.pointerId, y: e.clientY, dy: 0, t: performance.now(), active: false };
+    addEventListener('pointermove', onDragMove);
+    addEventListener('pointerup', onDragEnd);
+    addEventListener('pointercancel', onDragEnd);
+  });
+
+  el.addEventListener('click', (e) => {
+    const act = e.target.closest('[data-act]');
+    if (!act) return;
+    if (act.dataset.act === 'menu-delete') {
+      e.preventDefault();
+      e.stopPropagation();
+      showView('confirm');
+    } else if (act.dataset.act === 'menu-back') {
+      e.preventDefault();
+      e.stopPropagation();
+      showView('actions');
+    } else if (act.dataset.act === 'menu-confirm') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (deleting) return;
+      deleting = true;
+      deleted = true;
+      sheet.classList.add('is-deleting');
+      deletePost(p.id);
+      deleteTimer = setTimeout(() => {
+        deleteTimer = 0;
+        if (layers.includes(entry)) history.back();
+      }, 160);
+    }
+  });
+}
+
 /* ------------------------------------------------------------------ compose */
 
 let activeCompose = null;
@@ -2364,14 +3084,24 @@ let activeCrop = null;
 function openCompose(restore) {
   if (activeCompose && activeCompose.entry.el.isConnected) return activeCompose;
 
-  const source = restore && restore.draft ? restore.draft : (ui.composeDraft || null);
-  const draft = sanitizeDraft(source) || { text: '', tags: [], ratio: 'auto', attachments: [] };
-  const attachments = draft.attachments
-    .filter((a) => a && state.uploaded[a.m])
-    .map((a) => ({ ...a, crop: normalizeCrop(a.crop) }));
-  let tags = draft.tags.slice();
-  let ratio = draft.ratio;
+  const editing = restore && restore.postId ? postById(restore.postId) : null;
+  if (restore && restore.postId && (!editing || editing.userId !== 'me')) return null;
+
+  const source = editing ? null : (restore && restore.draft ? restore.draft : (ui.composeDraft || null));
+  const draft = editing ? null : (sanitizeDraft(source) || { text: '', tags: [], ratio: 'auto', attachments: [] });
+  const attachments = editing
+    ? (editing.images || [])
+      .filter((a) => a && (a.s || (a.m && state.uploaded[a.m])))
+      .map((a) => ({ ...a, crop: normalizeCrop(a.crop) }))
+    : draft.attachments
+      .filter((a) => a && state.uploaded[a.m])
+      .map((a) => ({ ...a, crop: normalizeCrop(a.crop) }));
+  let tags = (editing ? editing.tags || [] : draft.tags).slice(0, 3);
+  let ratio = editing ? (editing.ratio || 'auto') : draft.ratio;
+  const originalMedia = new Set((editing ? editing.images || [] : []).map((a) => a.m).filter(Boolean));
+  const title = editing ? 'Edit post' : 'New post';
   let busy = 0;
+  let publishing = false;
   let closed = false;
   let published = false;
   let discarded = false;
@@ -2380,70 +3110,58 @@ function openCompose(restore) {
   const entry = mountLayer(`
     <header class="layer-h">
       <button class="icon-btn" type="button" data-act="close" aria-label="Close">${icon('x')}</button>
-      <h2>New post</h2>
-      <div class="layer-a"><button class="btn sm" id="publish" type="button" disabled>Post</button></div>
+      <h2>${title}</h2>
     </header>
     <div class="layer-body compose-body">
-      <section class="compose-section">
-        <div class="compose-label">Text</div>
-        <textarea class="compose-area" id="compose-text" maxlength="500" placeholder="What's on your mind?" autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="true" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" aria-label="Post text"></textarea>
-      </section>
+      <div class="compose-edit">
+        <section class="compose-section">
+          <textarea class="compose-area" id="compose-text" maxlength="500" placeholder="What's on your mind?" autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="true" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" aria-label="Post text"></textarea>
+        </section>
 
-      <section class="compose-section">
-        <div class="compose-label-row">
-          <span class="compose-label">Photos</span>
-          <span class="compose-label-tools">
+        <section class="compose-section">
+          <div class="compose-tools">
             <button class="ratio-chip" id="compose-ratio-btn" type="button" title="Change aspect ratio">Auto</button>
             <span class="compose-note" id="photo-count">0/5</span>
-          </span>
-        </div>
-        <div class="photo-strip" id="compose-photos"></div>
-        <input id="compose-file" type="file" accept="image/*" multiple hidden>
-        <p class="compose-hint" id="photo-hint">Add up to five photos. Tap one to crop, zoom and reposition it.</p>
-      </section>
+          </div>
+          <div class="photo-grid" id="compose-photos"></div>
+          <input id="compose-file" type="file" accept="image/*" multiple hidden>
+        </section>
 
-      <section class="compose-section">
-        <div class="compose-label-row"><span class="compose-label">Tags</span><span class="compose-note">Up to 3</span></div>
-        <div class="tagedit">
-          <div class="tagchips" id="compose-tags"></div>
-          <input class="taginput" id="compose-tag" name="tag" type="text" maxlength="24" placeholder="Add up to 3 tags" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" aria-autocomplete="none" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" aria-label="Add a tag">
-        </div>
-      </section>
+        <section class="compose-section">
+          <div class="tagedit">
+            <div class="tagchips" id="compose-tags"></div>
+            <input class="taginput" id="compose-tag" name="tag" type="text" maxlength="24" placeholder="Add up to 3 tags" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" aria-autocomplete="none" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" aria-label="Add a tag">
+          </div>
+        </section>
+      </div>
 
-      <section class="compose-section preview-section">
-        <div class="compose-label">Preview</div>
-        <div class="post-preview">
-          <header class="post-h">
-            ${av(state.me, 36)}
-            <div class="post-meta">
-              <span class="pname">${esc(state.me.name)}</span>
-              <div class="phandle">@${esc(state.me.handle)} · now</div>
-            </div>
-          </header>
-          <p class="preview-empty" id="preview-empty">Your post will appear here.</p>
-          <div class="preview-text" id="preview-text" hidden></div>
-          <div id="preview-media"></div>
-          <div class="post-tags" id="preview-tags" hidden></div>
-        </div>
-      </section>
+      <aside class="compose-side">
+        <section class="compose-section preview-section">
+          <div class="post-preview" id="compose-preview" aria-label="Post preview"></div>
+        </section>
+      </aside>
     </div>
     <footer class="compose-foot">
-      <button class="textbtn compose-discard" id="compose-discard" type="button">Discard</button>
+      <button class="btn ghost compose-discard" id="compose-discard" type="button">${editing ? 'Cancel' : 'Discard'}</button>
       <span class="spacer"></span>
       <span class="count" id="compose-count">0/500</span>
+      <button class="btn compose-submit" id="publish" type="button" disabled>${editing ? 'Save' : 'Post'}</button>
     </footer>
   `, {
     cls: 'compose-layer',
-    descriptor: { type: 'compose' },
+    descriptor: editing ? { type: 'compose', postId: editing.id } : { type: 'compose' },
     capture() {
-      const d = buildDraft();
-      return { draft: d };
+      return editing ? { postId: editing.id } : { draft: buildDraft() };
     },
     onClose() {
       closed = true;
       clearTimeout(draftTimer);
       draftTimer = 0;
-      if (published || discarded) {
+      if (editing) {
+        if (!published) {
+          for (const a of attachments) if (a.m && !originalMedia.has(a.m)) discardMedia(a.m);
+        }
+      } else if (published || discarded) {
         ui.composeDraft = null;
         saveUI();
       } else {
@@ -2459,32 +3177,35 @@ function openCompose(restore) {
   const count = $('#compose-count', el);
   const photosEl = $('#compose-photos', el);
   const photoCount = $('#photo-count', el);
-  const photoHint = $('#photo-hint', el);
   const ratioBtn = $('#compose-ratio-btn', el);
   const file = $('#compose-file', el);
   const tagBox = $('#compose-tags', el);
   const tagInput = $('#compose-tag', el);
-  const previewText = $('#preview-text', el);
-  const previewMedia = $('#preview-media', el);
-  const previewTags = $('#preview-tags', el);
-  const previewEmpty = $('#preview-empty', el);
+  const preview = $('#compose-preview', el);
   const discard = $('#compose-discard', el);
 
   const cleanTag = (raw) => String(raw || '').trim().replace(/^#+/, '').toLowerCase()
     .replace(/[^\p{L}\p{N}_-]+/gu, '').slice(0, 24);
 
+  function imageRows() {
+    return attachments.map((a) => {
+      const im = { w: a.w, h: a.h, crop: { ...a.crop } };
+      if (a.m) im.m = a.m;
+      if (a.s) im.s = a.s;
+      if (a.a) im.a = a.a;
+      return im;
+    });
+  }
+
   function buildDraft() {
+    if (editing) return null;
     const text = area ? area.value.slice(0, 500) : '';
     if (!text.trim() && !tags.length && !attachments.length) return null;
-    return {
-      text,
-      tags: tags.slice(),
-      ratio,
-      attachments: attachments.map((a) => ({ m: a.m, w: a.w, h: a.h, crop: { ...a.crop } }))
-    };
+    return { text, tags: tags.slice(), ratio, attachments: imageRows() };
   }
 
   function saveDraftNow() {
+    if (editing) return;
     clearTimeout(draftTimer);
     draftTimer = 0;
     ui.composeDraft = buildDraft();
@@ -2492,49 +3213,45 @@ function openCompose(restore) {
   }
 
   function saveDraft() {
+    if (editing) return;
     clearTimeout(draftTimer);
     draftTimer = setTimeout(saveDraftNow, 180);
   }
 
   function previewPost() {
     return {
-      id: 'preview',
+      id: editing ? editing.id : 'preview',
       userId: 'me',
-      ts: Date.now(),
+      ts: editing ? editing.ts : Date.now(),
+      likes: editing ? editing.likes : 0,
       text: area.value.trim(),
       tags: tags.slice(),
-      images: attachments.map((a) => ({ m: a.m, w: a.w, h: a.h, crop: { ...a.crop } })),
+      images: imageRows(),
       ratio
     };
   }
 
-  function syncPreviewMeta() {
-    const text = area.value.trim();
-    previewText.textContent = text;
-    previewText.hidden = !text;
-    previewTags.innerHTML = tags.map((t) => `<span class="ptag">#${esc(t)}</span>`).join('');
-    previewTags.hidden = !tags.length;
-    previewEmpty.hidden = !!(text || attachments.length);
-  }
-
-  function syncPreviewMedia() {
-    if (!attachments.length) {
-      previewMedia.innerHTML = '';
+  function syncPreview() {
+    const p = previewPost();
+    const has = p.text || p.images.length || p.tags.length;
+    if (!has) {
+      preview.innerHTML = '<p class="preview-empty">Your post will appear here.</p>';
       return;
     }
-    previewMedia.innerHTML = mediaHtml(previewPost());
-    hydrate(previewMedia);
+    preview.innerHTML = postCard(p);
+    const card = preview.querySelector('.post');
+    if (card) card.tabIndex = -1;
+    hydrate(preview);
   }
 
   function sync() {
     photoCount.textContent = attachments.length + '/5';
-    photoHint.hidden = attachments.length > 0;
     ratioBtn.textContent = ratioLabel(ratio);
     ratioBtn.disabled = !attachments.length;
-    count.textContent = busy ? 'Optimising...' : area.value.length + '/500';
+    count.textContent = busy ? 'Compressing...' : area.value.length + '/500';
     publish.disabled = busy > 0 || (!area.value.trim() && attachments.length === 0);
-    discard.disabled = !area.value.trim() && !attachments.length && !tags.length;
-    syncPreviewMeta();
+    discard.disabled = editing ? false : (!area.value.trim() && !attachments.length && !tags.length);
+    syncPreview();
     scheduleScrollbar();
     saveDraft();
   }
@@ -2547,10 +3264,10 @@ function openCompose(restore) {
   function thumbHtml(a, i) {
     return `<div class="photo-tile" data-tile="${i}">
       <button class="photo-thumb" type="button" data-edit="${i}" aria-label="Edit photo ${i + 1}">
-        <img data-media="${a.m}" alt="" draggable="false" style="${cropStyle(a, '1 / 1')}">
+        ${editorImg(a, '1 / 1')}
       </button>
       <span class="photo-index">${i + 1}</span>
-      <button class="photo-remove" type="button" data-rm="${a.m}" aria-label="Remove photo ${i + 1}">${icon('x')}</button>
+      <button class="photo-remove" type="button" data-rm="${i}" aria-label="Remove photo ${i + 1}">${icon('x')}</button>
     </div>`;
   }
 
@@ -2560,7 +3277,6 @@ function openCompose(restore) {
       : '';
     photosEl.innerHTML = attachments.map(thumbHtml).join('') + add;
     hydrate(photosEl);
-    syncPreviewMedia();
     sync();
   }
 
@@ -2587,7 +3303,6 @@ function openCompose(restore) {
   function refresh() {
     if (!el.isConnected) return;
     renderPhotos();
-    syncPreviewMeta();
     sync();
   }
 
@@ -2595,13 +3310,15 @@ function openCompose(restore) {
     const a = attachments[index];
     if (!a) return;
     attachments.splice(index, 1);
-    discardMedia(a.m);
+    if (a.m && !originalMedia.has(a.m)) discardMedia(a.m);
     refresh();
   }
 
   function discardNow() {
     discarded = true;
-    for (const a of attachments) discardMedia(a.m);
+    for (const a of attachments) {
+      if (a.m && !originalMedia.has(a.m)) discardMedia(a.m);
+    }
     attachments.length = 0;
     tags = [];
     if (area) area.value = '';
@@ -2634,13 +3351,16 @@ function openCompose(restore) {
   photosEl.addEventListener('click', (e) => {
     const rm = e.target.closest('[data-rm]');
     if (rm) {
-      const i = attachments.findIndex((a) => a.m === rm.dataset.rm);
-      if (i >= 0) removeAt(i);
+      const i = Number(rm.dataset.rm);
+      if (Number.isInteger(i)) removeAt(i);
       return;
     }
     const edit = e.target.closest('[data-edit]');
     if (edit) { openEditor(Number(edit.dataset.edit) || 0); return; }
-    if (e.target.closest('#photo-add')) file.click();
+    if (e.target.closest('#photo-add')) {
+      file.multiple = 5 - attachments.length > 1;
+      file.click();
+    }
   });
 
   tagBox.addEventListener('click', (e) => {
@@ -2677,6 +3397,7 @@ function openCompose(restore) {
   ratioBtn.addEventListener('click', () => openEditor(0));
   discard.addEventListener('click', () => {
     if (discard.disabled) return;
+    if (editing) { history.back(); return; }
     openConfirm('discard');
   });
 
@@ -2684,11 +3405,16 @@ function openCompose(restore) {
     const all = Array.from(file.files || []);
     file.value = '';
     const room = 5 - attachments.length;
-    if (all.length > room) toast('Up to five photos.');
+    const overflow = all.length > room;
     const files = all.slice(0, room);
-    if (!files.length) return;
+    if (!files.length) {
+      if (overflow) toast('Five photos max.');
+      return;
+    }
     busy += files.length;
+    processShow(files.length);
     sync();
+    let done = 0;
     for (const f of files) {
       try {
         const im = await compressImage(f);
@@ -2703,12 +3429,78 @@ function openCompose(restore) {
         toast("That photo didn't load.");
       }
       busy -= 1;
+      done += 1;
+      processStep(done, files.length);
       sync();
     }
+    processHide();
+    if (overflow) toast('Five photos max. Extra files were skipped.');
   });
 
-  publish.addEventListener('click', () => {
-    if (publish.disabled) return;
+  publish.addEventListener('click', async () => {
+    if (publish.disabled || publishing) return;
+    publishing = true;
+    publish.disabled = true;
+    const source = imageRows();
+    const ratioCss = ratioFor(ratio, source);
+    const frame = ratioValue(ratioCss);
+    const needs = (im) => {
+      const c = normalizeCrop(im.crop);
+      return c.x !== 0 || c.y !== 0 || c.z !== 1 || Math.abs((im.w / im.h) - frame) > .01;
+    };
+    const work = source.filter(needs);
+    let images = source;
+    const discards = [];
+    if (work.length) {
+      processShow(work.length);
+      const baked = [];
+      let done = 0;
+      for (const im of source) {
+        if (!needs(im)) {
+          baked.push(im);
+          continue;
+        }
+        const out = await bakeCrop(im, ratioCss, 1400);
+        if (out) {
+          baked.push({ m: out.m, w: out.w, h: out.h, a: im.a || '' });
+          if (im.m) discards.push(im.m);
+        } else {
+          baked.push({ ...im, crop: normalizeCrop(im.crop) });
+          toast("One photo could not be hard cropped.");
+        }
+        done += 1;
+        processStep(done, work.length);
+      }
+      processHide();
+      images = baked;
+    }
+    if (closed) {
+      for (const im of images) {
+        if (im.m && !source.some((row) => row.m === im.m)) discardMedia(im.m);
+      }
+      publishing = false;
+      return;
+    }
+    if (editing) {
+      const kept = new Set(images.map((im) => im.m).filter(Boolean));
+      for (const m of originalMedia) if (!kept.has(m)) discardMedia(m);
+      editing.text = area.value.trim();
+      editing.tags = tags.slice();
+      editing.ratio = ratio;
+      editing.images = images;
+      published = true;
+      save();
+      renderFeed();
+      renderProfile();
+      renderExplore();
+      refreshPostLayers(editing.id);
+      refreshCollectionLayers('saved');
+      refreshCollectionLayers('liked');
+      refreshCollectionLayers('comments');
+      toast('Post updated');
+      history.back();
+      return;
+    }
     const post = {
       id: uid('p'),
       userId: 'me',
@@ -2717,11 +3509,12 @@ function openCompose(restore) {
       text: area.value.trim(),
       tags: tags.slice(),
       ratio,
-      images: attachments.map((a) => ({ m: a.m, w: a.w, h: a.h, a: '', crop: { ...a.crop } }))
+      images
     };
     state.posts.push(post);
     published = true;
     ui.composeDraft = null;
+    for (const m of discards) discardMedia(m);
     save();
     saveUI();
     renderFeed(post.id);
@@ -2731,7 +3524,7 @@ function openCompose(restore) {
     toast('Posted');
   });
 
-  area.value = draft.text || '';
+  area.value = editing ? editing.text : (draft.text || '');
   renderTags();
   grow();
   renderPhotos();
@@ -2761,7 +3554,7 @@ function openCropEditor(index = 0) {
     <header class="layer-h">
       <button class="icon-btn" type="button" data-act="close" aria-label="Back">${icon('arrow-left')}</button>
       <h2>Crop</h2>
-      <div class="layer-a"><button class="btn sm" id="crop-done" type="button">Done</button></div>
+      <div class="layer-a"><span class="crop-count" id="crop-count"></span></div>
     </header>
     <div class="layer-body crop-body">
       <div class="crop-stage-wrap" id="crop-stage-wrap">
@@ -2772,13 +3565,8 @@ function openCropEditor(index = 0) {
         <div class="seg five ratio-seg crop-ratio" id="crop-ratio">
           ${PHOTO_RATIO_KEYS.map((key) => `<button class="${comp.ratio === key ? 'on' : ''}" type="button" data-v="${key}">${ratioLabel(key)}</button>`).join('')}
         </div>
-        <div class="crop-tools-row">
-          <button class="crop-reset" id="crop-reset" type="button">Reset</button>
-          <label class="crop-zoom-label">Zoom
-            <input class="crop-zoom" id="crop-zoom" type="range" min="1" max="4" step=".01" value="1" aria-label="Zoom photo">
-          </label>
-          <button class="crop-remove" id="crop-remove" type="button">Remove</button>
-        </div>
+        <input class="crop-zoom" id="crop-zoom" type="range" min="1" max="4" step=".01" value="1" aria-label="Zoom photo">
+        <button class="btn block crop-done" id="crop-done" type="button">Done</button>
       </div>
     </div>
   `, {
@@ -2788,6 +3576,7 @@ function openCropEditor(index = 0) {
     capture() { return { index: current }; },
     onClose() {
       if (cleanupResize) cleanupResize();
+      cancelCropFrames();
       activeCrop = null;
       comp.saveDraftNow();
       // Refresh the composer after the crop layer has finished sliding away.
@@ -2799,8 +3588,9 @@ function openCropEditor(index = 0) {
   const wrap = $('#crop-stage-wrap', el);
   const stage = $('#crop-stage', el);
   const film = $('#crop-film', el);
-  const zoom = $('#crop-zoom', el);
+  const count = $('#crop-count', el);
   const ratioSeg = $('#crop-ratio', el);
+  const zoom = $('#crop-zoom', el);
 
   const frameRatio = () => ratioFor(comp.ratio, list);
   const photo = () => list[current];
@@ -2810,17 +3600,25 @@ function openCropEditor(index = 0) {
     const a = photo();
     if (!a) return;
     const R = ratioValue(frameRatio());
-    const availW = Math.max(80, wrap.clientWidth - 24);
-    const availH = Math.max(80, wrap.clientHeight - 16);
+    const cs = getComputedStyle(wrap);
+    const availW = Math.max(80, wrap.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight));
+    const availH = Math.max(80, wrap.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom));
     let w = Math.min(availW, availH * R);
     let h = w / R;
     if (h > availH) { h = availH; w = h * R; }
     stage.style.width = Math.round(w) + 'px';
     stage.style.height = Math.round(h) + 'px';
-    stage.innerHTML = `<img data-media="${a.m}" alt="" draggable="false" style="${cropStyle(a, frameRatio())}">`;
+    stage.innerHTML = editorImg(a, frameRatio());
     hydrate(stage);
-    zoom.value = String(a.crop.z);
     stageRect = stage.getBoundingClientRect();
+    syncZoom();
+  }
+
+  function syncZoom() {
+    const a = photo();
+    const value = a ? a.crop.z : 1;
+    zoom.value = String(value);
+    zoom.style.setProperty('--p', ((value - 1) / 3).toFixed(4));
   }
 
   function updateImage() {
@@ -2828,8 +3626,8 @@ function openCropEditor(index = 0) {
     const img = stageImg();
     if (!a || !img) return;
     const m = cropMetrics(a, frameRatio());
-    img.style.transform = `translate(-50%,-50%) translate(${m.px}%,${m.py}%) scale(${m.z})`;
-    zoom.value = String(a.crop.z);
+    img.style.transform = `translate3d(-50%,-50%,0) translate3d(${m.px}%,${m.py}%,0) scale(${m.z})`;
+    syncZoom();
     comp.saveDraft();
   }
 
@@ -2886,15 +3684,96 @@ function openCropEditor(index = 0) {
   }
 
   function renderFilm() {
+    film.hidden = list.length < 2;
     film.innerHTML = list.map((a, i) => `<button class="film-thumb${i === current ? ' on' : ''}" type="button" data-film="${i}" aria-label="Photo ${i + 1}">
-      <img data-media="${a.m}" alt="" draggable="false" style="${cropStyle(a, '1 / 1')}">
+      ${editorImg(a, '1 / 1')}
     </button>`).join('');
+    if (count) count.textContent = list.length > 1 ? `${current + 1} of ${list.length}` : '';
     hydrate(film);
   }
 
   const pointers = new Map();
   let pan = null;
   let pinch = null;
+  let panFrame = 0;
+  let panQueue = null;
+  let zoomFrame = 0;
+  let zoomQueue = null;
+  let sliderFrame = 0;
+  let wheelFrame = 0;
+  let wheelAnim = 0;
+  let wheelDelta = 0;
+  let wheelCtrl = false;
+  let wheelPoint = null;
+  let wheelTarget = null;
+
+  function cancelCropFrames() {
+    if (panFrame) cancelAnimationFrame(panFrame);
+    if (zoomFrame) cancelAnimationFrame(zoomFrame);
+    if (sliderFrame) cancelAnimationFrame(sliderFrame);
+    if (wheelFrame) cancelAnimationFrame(wheelFrame);
+    if (wheelAnim) cancelAnimationFrame(wheelAnim);
+    panFrame = zoomFrame = sliderFrame = wheelFrame = wheelAnim = 0;
+    panQueue = zoomQueue = wheelPoint = wheelTarget = null;
+  }
+
+  function cancelWheelGlide() {
+    if (wheelAnim) cancelAnimationFrame(wheelAnim);
+    wheelAnim = 0;
+    wheelTarget = null;
+  }
+
+  function stepWheelGlide() {
+    wheelAnim = 0;
+    const a = photo();
+    if (!a || !wheelTarget) return;
+    const diff = wheelTarget.z - a.crop.z;
+    if (Math.abs(diff) < .002) {
+      zoomTo(wheelTarget.z, wheelTarget.x, wheelTarget.y);
+      wheelTarget = null;
+      return;
+    }
+    zoomTo(a.crop.z + diff * .3, wheelTarget.x, wheelTarget.y);
+    wheelAnim = requestAnimationFrame(stepWheelGlide);
+  }
+
+  function queuePan(dx, dy) {
+    if (!panQueue) panQueue = { dx: 0, dy: 0 };
+    panQueue.dx += dx;
+    panQueue.dy += dy;
+    if (panFrame) return;
+    panFrame = requestAnimationFrame(() => {
+      panFrame = 0;
+      const q = panQueue;
+      panQueue = null;
+      if (q) panBy(q.dx, q.dy);
+    });
+  }
+
+  function flushPan() {
+    if (panFrame) { cancelAnimationFrame(panFrame); panFrame = 0; }
+    const q = panQueue;
+    panQueue = null;
+    if (q) panBy(q.dx, q.dy);
+  }
+
+  function queueZoom(z, x, y) {
+    zoomQueue = { z, x, y };
+    if (zoomFrame) return;
+    zoomFrame = requestAnimationFrame(() => {
+      zoomFrame = 0;
+      const q = zoomQueue;
+      zoomQueue = null;
+      if (q) zoomTo(q.z, q.x, q.y);
+    });
+  }
+
+  function flushZoom() {
+    if (zoomFrame) { cancelAnimationFrame(zoomFrame); zoomFrame = 0; }
+    const q = zoomQueue;
+    zoomQueue = null;
+    if (q) zoomTo(q.z, q.x, q.y);
+  }
 
   function startPinch() {
     const pts = Array.from(pointers.values());
@@ -2911,6 +3790,7 @@ function openCropEditor(index = 0) {
   stage.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.preventDefault();
+    cancelWheelGlide();
     try { stage.setPointerCapture(e.pointerId); } catch (err) {}
     stageRect = stage.getBoundingClientRect();
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -2930,9 +3810,9 @@ function openCropEditor(index = 0) {
       const pts = Array.from(pointers.values());
       const dist = Math.max(1, Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y));
       const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
-      zoomTo(pinch.z * dist / pinch.dist, mid.x, mid.y);
+      queueZoom(pinch.z * dist / pinch.dist, mid.x, mid.y);
     } else if (pan && pointers.size === 1) {
-      panBy(e.clientX - pan.x, e.clientY - pan.y);
+      queuePan(e.clientX - pan.x, e.clientY - pan.y);
       pan = { x: e.clientX, y: e.clientY };
     }
   });
@@ -2940,6 +3820,8 @@ function openCropEditor(index = 0) {
   function endPointer(e) {
     if (!pointers.has(e.pointerId)) return;
     pointers.delete(e.pointerId);
+    flushPan();
+    flushZoom();
     if (pointers.size === 1) {
       const only = Array.from(pointers.values())[0];
       pan = { x: only.x, y: only.y };
@@ -2954,10 +3836,25 @@ function openCropEditor(index = 0) {
 
   stage.addEventListener('wheel', (e) => {
     e.preventDefault();
-    const a = photo();
-    if (!a) return;
-    const factor = Math.exp(-e.deltaY * .0016);
-    zoomTo(a.crop.z * factor, e.clientX, e.clientY);
+    if (!photo()) return;
+    const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 320 : e.deltaY;
+    wheelDelta += delta;
+    wheelCtrl = e.ctrlKey;
+    wheelPoint = { x: e.clientX, y: e.clientY };
+    if (wheelFrame) return;
+    wheelFrame = requestAnimationFrame(() => {
+      wheelFrame = 0;
+      const a = photo();
+      const point = wheelPoint;
+      const total = wheelDelta;
+      wheelDelta = 0;
+      wheelPoint = null;
+      if (!a || !point || !total) return;
+      const factor = clamp(Math.exp(-total * (wheelCtrl ? .0025 : .0012)), .92, 1.18);
+      const base = wheelTarget ? wheelTarget.z : a.crop.z;
+      wheelTarget = { z: clamp(base * factor, 1, 4), x: point.x, y: point.y };
+      if (!wheelAnim) wheelAnim = requestAnimationFrame(stepWheelGlide);
+    });
   }, { passive: false });
 
   stage.addEventListener('pointerup', (e) => {
@@ -3010,20 +3907,20 @@ function openCropEditor(index = 0) {
   });
 
   zoom.addEventListener('input', () => {
-    const a = photo();
-    if (!a) return;
-    const rect = stage.getBoundingClientRect();
-    zoomTo(Number(zoom.value) || 1, rect.left + rect.width / 2, rect.top + rect.height / 2);
+    cancelWheelGlide();
+    const value = Number(zoom.value) || 1;
+    zoom.style.setProperty('--p', ((value - 1) / 3).toFixed(4));
+    if (sliderFrame) return;
+    sliderFrame = requestAnimationFrame(() => {
+      sliderFrame = 0;
+      const a = photo();
+      if (!a) return;
+      const rect = stageRect || stage.getBoundingClientRect();
+      zoomTo(Number(zoom.value) || 1, rect.left + rect.width / 2, rect.top + rect.height / 2);
+    });
   });
 
-  $('#crop-reset', el).addEventListener('click', resetCrop);
   $('#crop-done', el).addEventListener('click', () => history.back());
-  $('#crop-remove', el).addEventListener('click', () => {
-    const at = current;
-    comp.removeAt(at);
-    if (!comp.attachments.length) { history.back(); return; }
-    select(Math.min(at, comp.attachments.length - 1));
-  });
 
   const onResize = () => layout();
   addEventListener('resize', onResize);
@@ -3038,14 +3935,314 @@ function openCropEditor(index = 0) {
   return activeCrop;
 }
 
+
+let activeAvatarCrop = null;
+
+function openAvatarCrop(avatar, onConfirm, onCancel) {
+  if (!avatar || !avatar.m) return null;
+  if (activeAvatarCrop && activeAvatarCrop.entry.el.isConnected) return activeAvatarCrop;
+
+  const crop = normalizeCrop(avatar.crop);
+  let confirmed = false;
+  let stageRect = null;
+  let cleanupResize = null;
+  let panFrame = 0;
+  let zoomFrame = 0;
+  let sliderFrame = 0;
+  let panQueue = null;
+  let zoomQueue = null;
+  const pointers = new Map();
+  let pan = null;
+  let pinch = null;
+  let lastTap = null;
+
+  const image = () => ({ m: avatar.m, w: avatar.w, h: avatar.h, crop });
+
+  const entry = mountLayer(`
+    <header class="layer-h">
+      <button class="icon-btn" type="button" data-act="close" aria-label="Back">${icon('arrow-left')}</button>
+      <h2>Crop photo</h2>
+    </header>
+    <div class="layer-body crop-body">
+      <div class="crop-stage-wrap" id="avatar-crop-wrap">
+        <div class="crop-stage" id="avatar-crop-stage" tabindex="0" aria-label="Crop profile photo"></div>
+      </div>
+      <div class="crop-bottom">
+        <input class="crop-zoom" id="avatar-crop-zoom" type="range" min="1" max="4" step=".01" value="1" aria-label="Zoom photo">
+        <button class="btn block crop-done" id="avatar-crop-done" type="button">Use photo</button>
+      </div>
+    </div>
+  `, {
+    up: true,
+    cls: 'crop-layer avatar-crop-layer',
+    descriptor: { type: 'avatar-crop', id: avatar.m },
+    onClose() {
+      cancelFrames();
+      if (cleanupResize) cleanupResize();
+      activeAvatarCrop = null;
+      if (!confirmed && onCancel) onCancel();
+    }
+  });
+
+  const el = entry.el;
+  const wrap = $('#avatar-crop-wrap', el);
+  const stage = $('#avatar-crop-stage', el);
+  const zoom = $('#avatar-crop-zoom', el);
+  if (!wrap || !stage || !zoom) return entry;
+
+  function syncZoom() {
+    zoom.value = String(crop.z);
+    zoom.style.setProperty('--p', ((crop.z - 1) / 3).toFixed(4));
+  }
+
+  function updateImage() {
+    const img = stage.querySelector('img');
+    if (!img) return;
+    const m = cropMetrics(image(), '1 / 1');
+    img.style.transform = `translate3d(-50%,-50%,0) translate3d(${m.px}%,${m.py}%,0) scale(${m.z})`;
+    syncZoom();
+  }
+
+  function layout() {
+    const cs = getComputedStyle(wrap);
+    const availW = Math.max(80, wrap.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight));
+    const availH = Math.max(80, wrap.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom));
+    const size = Math.round(Math.max(80, Math.min(availW, availH)));
+    stage.style.width = size + 'px';
+    stage.style.height = size + 'px';
+    stage.innerHTML = editorImg(image(), '1 / 1');
+    hydrate(stage);
+    stageRect = stage.getBoundingClientRect();
+    syncZoom();
+  }
+
+  function panBy(dx, dy) {
+    const rect = stageRect || stage.getBoundingClientRect();
+    const m = cropMetrics(image(), '1 / 1');
+    const maxX = (m.w / 100 * rect.width - rect.width) / 2;
+    const maxY = (m.h / 100 * rect.height - rect.height) / 2;
+    if (maxX > .5) crop.x = clamp(crop.x + dx / maxX, -1, 1);
+    if (maxY > .5) crop.y = clamp(crop.y + dy / maxY, -1, 1);
+    updateImage();
+  }
+
+  function zoomAt(z, clientX, clientY) {
+    const rect = stageRect || stage.getBoundingClientRect();
+    const qx = clientX - (rect.left + rect.width / 2);
+    const qy = clientY - (rect.top + rect.height / 2);
+    const before = cropMetrics(image(), '1 / 1');
+    const sx = before.w / 100 * rect.width;
+    const sy = before.h / 100 * rect.height;
+    const panX = before.x * (sx - rect.width) / 2;
+    const panY = before.y * (sy - rect.height) / 2;
+    const ux = sx > 0 ? (qx - panX) / sx : 0;
+    const uy = sy > 0 ? (qy - panY) / sy : 0;
+    crop.z = clamp(z, 1, 4);
+    const after = cropMetrics(image(), '1 / 1');
+    const sx2 = after.w / 100 * rect.width;
+    const sy2 = after.h / 100 * rect.height;
+    const panX2 = qx - ux * sx2;
+    const panY2 = qy - uy * sy2;
+    const maxX = (sx2 - rect.width) / 2;
+    const maxY = (sy2 - rect.height) / 2;
+    crop.x = maxX > .5 ? clamp(panX2 / maxX, -1, 1) : 0;
+    crop.y = maxY > .5 ? clamp(panY2 / maxY, -1, 1) : 0;
+    updateImage();
+  }
+
+  function resetCrop() {
+    crop.x = 0;
+    crop.y = 0;
+    crop.z = 1;
+    updateImage();
+  }
+
+  function queuePan(dx, dy) {
+    if (!panQueue) panQueue = { dx: 0, dy: 0 };
+    panQueue.dx += dx;
+    panQueue.dy += dy;
+    if (panFrame) return;
+    panFrame = requestAnimationFrame(() => {
+      panFrame = 0;
+      const q = panQueue;
+      panQueue = null;
+      if (q) panBy(q.dx, q.dy);
+    });
+  }
+
+  function flushPan() {
+    if (panFrame) { cancelAnimationFrame(panFrame); panFrame = 0; }
+    const q = panQueue;
+    panQueue = null;
+    if (q) panBy(q.dx, q.dy);
+  }
+
+  function queueZoom(z, x, y) {
+    zoomQueue = { z, x, y };
+    if (zoomFrame) return;
+    zoomFrame = requestAnimationFrame(() => {
+      zoomFrame = 0;
+      const q = zoomQueue;
+      zoomQueue = null;
+      if (q) zoomAt(q.z, q.x, q.y);
+    });
+  }
+
+  function flushZoom() {
+    if (zoomFrame) { cancelAnimationFrame(zoomFrame); zoomFrame = 0; }
+    const q = zoomQueue;
+    zoomQueue = null;
+    if (q) zoomAt(q.z, q.x, q.y);
+  }
+
+  function cancelFrames() {
+    if (panFrame) cancelAnimationFrame(panFrame);
+    if (zoomFrame) cancelAnimationFrame(zoomFrame);
+    if (sliderFrame) cancelAnimationFrame(sliderFrame);
+    panFrame = zoomFrame = sliderFrame = 0;
+    panQueue = zoomQueue = null;
+  }
+
+  function startPinch() {
+    const pts = Array.from(pointers.values());
+    if (pts.length < 2) return;
+    pinch = {
+      dist: Math.max(1, Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y)),
+      z: crop.z
+    };
+  }
+
+  stage.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    try { stage.setPointerCapture(e.pointerId); } catch (err) {}
+    stageRect = stage.getBoundingClientRect();
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 1) {
+      pan = { x: e.clientX, y: e.clientY };
+      pinch = null;
+    } else if (pointers.size === 2) {
+      pan = null;
+      startPinch();
+    }
+  });
+
+  stage.addEventListener('pointermove', (e) => {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && pointers.size >= 2) {
+      const pts = Array.from(pointers.values());
+      const dist = Math.max(1, Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y));
+      const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+      queueZoom(pinch.z * dist / pinch.dist, mid.x, mid.y);
+    } else if (pan && pointers.size === 1) {
+      queuePan(e.clientX - pan.x, e.clientY - pan.y);
+      pan = { x: e.clientX, y: e.clientY };
+    }
+  });
+
+  function endPointer(e) {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.delete(e.pointerId);
+    flushPan();
+    flushZoom();
+    if (pointers.size === 1) {
+      const only = Array.from(pointers.values())[0];
+      pan = { x: only.x, y: only.y };
+      pinch = null;
+    } else if (!pointers.size) {
+      pan = null;
+      pinch = null;
+    }
+  }
+  stage.addEventListener('pointerup', endPointer);
+  stage.addEventListener('pointercancel', endPointer);
+
+  stage.addEventListener('pointerup', (e) => {
+    if (e.pointerType === 'mouse') return;
+    const now = performance.now();
+    if (lastTap && now - lastTap.t < 300 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 26) {
+      lastTap = null;
+      if (crop.z < 1.5) zoomAt(2, e.clientX, e.clientY);
+      else resetCrop();
+    } else {
+      lastTap = { t: now, x: e.clientX, y: e.clientY };
+    }
+  });
+
+  stage.addEventListener('dblclick', (e) => {
+    if (crop.z < 1.5) zoomAt(2, e.clientX, e.clientY);
+    else resetCrop();
+  });
+
+  stage.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 320 : e.deltaY;
+    const factor = clamp(Math.exp(-delta * .0012), .92, 1.18);
+    zoomAt(crop.z * factor, e.clientX, e.clientY);
+  }, { passive: false });
+
+  stage.addEventListener('keydown', (e) => {
+    const step = e.shiftKey ? 28 : 10;
+    if (e.key === 'ArrowLeft') { e.preventDefault(); panBy(step, 0); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); panBy(-step, 0); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); panBy(0, step); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); panBy(0, -step); }
+    else if (e.key === '+' || e.key === '=') {
+      e.preventDefault();
+      const r = stage.getBoundingClientRect();
+      zoomAt(crop.z * 1.08, r.left + r.width / 2, r.top + r.height / 2);
+    } else if (e.key === '-') {
+      e.preventDefault();
+      const r = stage.getBoundingClientRect();
+      zoomAt(crop.z / 1.08, r.left + r.width / 2, r.top + r.height / 2);
+    } else if (e.key === '0') {
+      e.preventDefault();
+      resetCrop();
+    }
+  });
+
+  zoom.addEventListener('input', () => {
+    const value = Number(zoom.value) || 1;
+    zoom.style.setProperty('--p', ((value - 1) / 3).toFixed(4));
+    if (sliderFrame) return;
+    sliderFrame = requestAnimationFrame(() => {
+      sliderFrame = 0;
+      const r = stageRect || stage.getBoundingClientRect();
+      zoomAt(Number(zoom.value) || 1, r.left + r.width / 2, r.top + r.height / 2);
+    });
+  });
+
+  $('#avatar-crop-done', el).addEventListener('click', () => {
+    confirmed = true;
+    if (onConfirm) onConfirm({ ...avatar, crop: normalizeCrop(crop) });
+    history.back();
+  });
+
+  const onResize = () => layout();
+  addEventListener('resize', onResize);
+  cleanupResize = () => removeEventListener('resize', onResize);
+
+  activeAvatarCrop = { entry };
+  requestAnimationFrame(() => {
+    layout();
+    stage.focus({ preventScroll: true });
+  });
+  return activeAvatarCrop;
+}
+
 /* ------------------------------------------------------------------ edit profile */
 
 function openEdit(restore) {
   const me = state.me;
   const draft = restore && restore.draft && typeof restore.draft === 'object' ? restore.draft : null;
   const name = draft && typeof draft.name === 'string' ? draft.name.slice(0, 40) : me.name;
-  const handle = draft && typeof draft.handle === 'string' ? draft.handle.slice(0, 20) : me.handle;
+  const handle = draft && typeof draft.handle === 'string' ? draft.handle.slice(0, HANDLE_MAX) : me.handle;
   const bio = draft && typeof draft.bio === 'string' ? draft.bio.slice(0, 160) : me.bio;
+  const oldAvatar = me.avatar;
+  let pendingAvatar = me.avatar;
+  let pendingUpload = null;
+  let saved = false;
   let closed = false;
   const entry = mountLayer(`
     ${layerHead('Edit profile', '<button class="btn sm" id="save-profile" type="button">Save</button>')}
@@ -3053,8 +4250,8 @@ function openEdit(restore) {
       <div class="avatar-edit">
         <div id="edit-av">${av(me, 64)}</div>
         <div class="avatar-actions">
-          <label class="btn ghost sm">Change photo<input id="edit-avatar-file" type="file" accept="image/*" hidden></label>
-          ${me.avatar ? '<button class="textbtn" id="remove-avatar" type="button" data-act="avatar-remove">Remove photo</button>' : ''}
+          <label class="btn ghost avatar-action">${icon('image')}Change photo<input id="edit-avatar-file" type="file" accept="image/*" hidden></label>
+          <button class="btn ghost avatar-action" id="remove-avatar" type="button"${pendingAvatar ? '' : ' hidden'}>${icon('trash-2')}Remove photo</button>
         </div>
       </div>
       <div>
@@ -3063,7 +4260,10 @@ function openEdit(restore) {
       </div>
       <div>
         <label class="lbl" for="edit-handle">Handle</label>
-        <input class="field" id="edit-handle" name="handle" maxlength="20" value="${esc(handle)}" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" aria-autocomplete="none" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other">
+        <div class="handle-wrap">
+          <span class="handle-at" aria-hidden="true">@</span>
+          <input class="field handle-field" id="edit-handle" name="handle" maxlength="${HANDLE_MAX}" pattern="[a-z_.\\-]*" value="${esc(handle)}" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" aria-autocomplete="none" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other">
+        </div>
       </div>
       <div>
         <label class="lbl" for="edit-bio">Bio</label>
@@ -3077,24 +4277,79 @@ function openEdit(restore) {
       return {
         draft: {
           name: $('#edit-name', entry.el) ? $('#edit-name', entry.el).value.slice(0, 40) : name,
-          handle: $('#edit-handle', entry.el) ? $('#edit-handle', entry.el).value.slice(0, 20) : handle,
+          handle: $('#edit-handle', entry.el) ? slug($('#edit-handle', entry.el).value) : handle,
           bio: $('#edit-bio', entry.el) ? $('#edit-bio', entry.el).value.slice(0, 160) : bio
         }
       };
     },
-    onClose() { closed = true; }
+    onClose() {
+      closed = true;
+      if (!saved && pendingUpload) discardMedia(pendingUpload.m);
+    }
   });
 
   const el = entry.el;
   const form = $('#edit-form', el);
+  const handleInput = $('#edit-handle', el);
+  const removeBtn = $('#remove-avatar', el);
+  const saveBtn = $('#save-profile', el);
+
+  function updateAvatarPreview() {
+    const box = $('#edit-av', el);
+    if (box) {
+      box.innerHTML = av({ ...me, avatar: pendingAvatar }, 64);
+      hydrate(box);
+    }
+    if (removeBtn) removeBtn.hidden = !pendingAvatar;
+  }
+
+  handleInput.addEventListener('input', () => {
+    const raw = handleInput.value;
+    const pos = handleInput.selectionStart ?? raw.length;
+    const next = slug(raw);
+    if (next === raw) return;
+    const before = slug(raw.slice(0, pos));
+    handleInput.value = next;
+    const caret = Math.min(next.length, before.length);
+    handleInput.setSelectionRange(caret, caret);
+  });
 
   $('#save-profile', el).addEventListener('click', () => form.requestSubmit());
 
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (saveBtn.disabled) return;
+    saveBtn.disabled = true;
+    let nextAvatar = pendingAvatar;
+    if (pendingAvatar !== oldAvatar && pendingAvatar && pendingAvatar.m) {
+      processShow(1);
+      let baked = null;
+      try { baked = await bakeCrop(pendingAvatar, '1 / 1', 512); }
+      finally { processHide(); }
+      if (!baked) {
+        saveBtn.disabled = false;
+        toast("That photo couldn't be cropped.");
+        return;
+      }
+      let data = '';
+      try {
+        const blob = await idbGet(baked.m);
+        if (blob) data = await blobToDataURL(blob);
+      } catch (err) {}
+      nextAvatar = { m: baked.m, w: baked.w, h: baked.h, d: data || undefined };
+      if (pendingUpload) {
+        discardMedia(pendingUpload.m);
+        pendingUpload = null;
+      }
+    }
     me.name = ($('#edit-name', el).value.trim() || me.name).slice(0, 40);
     me.handle = slug($('#edit-handle', el).value) || me.handle;
     me.bio = $('#edit-bio', el).value.trim().slice(0, 160);
+    if (nextAvatar !== oldAvatar) {
+      if (oldAvatar && oldAvatar.m && (!nextAvatar || nextAvatar.m !== oldAvatar.m)) discardMedia(oldAvatar.m);
+      me.avatar = nextAvatar;
+    }
+    saved = true;
     save();
     renderFeed();
     renderExplore();
@@ -3103,12 +4358,23 @@ function openEdit(restore) {
     toast('Profile updated');
   });
 
+  removeBtn.addEventListener('click', () => {
+    if (pendingUpload) {
+      discardMedia(pendingUpload.m);
+      pendingUpload = null;
+    }
+    pendingAvatar = null;
+    updateAvatarPreview();
+  });
+
   $('#edit-avatar-file', el).addEventListener('change', async (e) => {
     const file = e.target.files && e.target.files[0];
     e.target.value = '';
     if (!file) return;
-    toast('Optimising photo...');
-    const im = await compressImage(file, 512, .86);
+    processShow(1);
+    let im = null;
+    try { im = await compressImage(file, 512, .86); }
+    finally { processHide(); }
     if (!im) { toast("That photo didn't load."); return; }
     if (closed) { discardMedia(im.m); return; }
     let data = '';
@@ -3117,30 +4383,17 @@ function openEdit(restore) {
       if (blob) data = await blobToDataURL(blob);
     } catch (e) {}
     if (closed) { discardMedia(im.m); return; }
-    if (me.avatar && me.avatar.m) discardMedia(me.avatar.m);
-    me.avatar = { m: im.m, w: im.w, h: im.h, d: data || undefined };
-    save();
-    const box = $('#edit-av', el);
-    if (box) { box.innerHTML = av(me, 64); hydrate(box); }
-    renderFeed();
-    renderProfile();
-    toast('Photo updated');
+    const candidate = { m: im.m, w: im.w, h: im.h, d: data || undefined };
+    openAvatarCrop(candidate, (next) => {
+      if (pendingUpload && pendingUpload.m !== next.m) discardMedia(pendingUpload.m);
+      pendingUpload = next;
+      pendingAvatar = next;
+      updateAvatarPreview();
+      toast('Press Save to keep this photo.');
+    }, () => {
+      discardMedia(candidate.m);
+    });
   });
-}
-
-function removeAvatar() {
-  const me = state.me;
-  if (!me.avatar) return;
-  if (me.avatar.m) discardMedia(me.avatar.m);
-  me.avatar = null;
-  save();
-  const box = $('#edit-av');
-  if (box) { box.innerHTML = av(me, 64); hydrate(box); }
-  const btn = $('#remove-avatar');
-  if (btn) btn.remove();
-  renderFeed();
-  renderProfile();
-  toast('Photo removed');
 }
 
 /* ------------------------------------------------------------------ settings */
@@ -3229,7 +4482,6 @@ function openConfirm(kind) {
     }
   }[kind] || null;
   if (!copy) return;
-
   confirmAction = () => {
     if (kind === 'reset') resetDemo();
     else if (kind === 'logout') signOut();
@@ -3513,10 +4765,16 @@ function bindEvents() {
       renderExplore();
     }, 110);
   });
+  $('#explore-search').addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && e.target.value) {
+      e.preventDefault();
+      setExploreQuery('');
+    }
+  });
 
   document.addEventListener('click', (e) => {
     const el = e.target.closest('[data-act]');
-    if (!el) return;
+    if (!el || el.closest('.layer.closing')) return;
     const act = el.dataset.act;
     const id = el.dataset.id;
 
@@ -3526,6 +4784,9 @@ function bindEvents() {
       case 'shortcuts': openShortcuts(); break;
       case 'close': if (layers.length) history.back(); break;
       case 'open': openPost(id); break;
+      case 'avatar': openAvatarView(id, el); break;
+      case 'post-menu': openPostMenu(id); break;
+      case 'edit-post': closeSheetThen(() => openCompose({ postId: id })); break;
       case 'like': toggleLike(id, el); break;
       case 'bookmark': toggleBookmark(id, el); break;
       case 'share': sharePost(id); break;
@@ -3554,9 +4815,30 @@ function bindEvents() {
         if (input) input.focus();
         break;
       }
+      case 'explore-more': {
+        const kind = el.dataset.kind;
+        const offset = Number(el.dataset.offset) || 0;
+        const batch = kind === 'discover' ? 6 : (kind === 'people' ? 5 : 12);
+        const root = kind === 'discover' ? $('#explore-discover-list')
+          : (kind === 'people' ? $('#explore-people-list') : $('#explore-search-list'));
+        const pool = kind === 'discover' ? discoverPosts()
+          : (kind === 'people' ? searchPeople(exploreQuery) : searchPosts(exploreQuery));
+        const next = pool.slice(offset, offset + batch);
+        if (!root || !next.length) { el.remove(); break; }
+        root.insertAdjacentHTML('beforeend', next.map((row) => kind === 'people' ? personRow(row) : postCard(row)).join(''));
+        hydrate(root);
+        el.dataset.offset = String(offset + next.length);
+        if (offset + next.length >= pool.length) el.remove();
+        scheduleScrollbar();
+        break;
+      }
+      case 'clear-search':
+        setExploreQuery('');
+        $('#explore-search').focus();
+        break;
       case 'tag':
         setExploreQuery(el.dataset.q || '');
-        setTab('explore', { keepScroll: true });
+        setTab('explore', { top: true });
         break;
       case 'people': openPeopleList(id, el.dataset.kind); break;
       case 'follow': toggleFollow(id); break;
@@ -3569,7 +4851,6 @@ function bindEvents() {
         if (car) carouselGo(car, Number(el.dataset.i || 0));
         break;
       }
-      case 'avatar-remove': removeAvatar(); break;
     }
   });
 
@@ -3726,7 +5007,7 @@ function bindPostGestures() {
     if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 12) { lastTap = null; return; }
     const post = e.target.closest && e.target.closest('.post[data-post]');
     if (!post) { lastTap = null; return; }
-    if (e.target.closest('button, a, input, textarea, select, [contenteditable], .acts, .post-tags, .post-h')) {
+    if (e.target.closest('.post-preview, button, a, input, textarea, select, [contenteditable], .acts, .post-tags, .post-h')) {
       lastTap = null;
       return;
     }
@@ -3748,7 +5029,7 @@ function bindPostGestures() {
   document.addEventListener('dblclick', (e) => {
     const post = e.target.closest && e.target.closest('.post[data-post]');
     if (!post) return;
-    if (e.target.closest('button, a, input, textarea, select, [contenteditable], .acts, .post-tags, .post-h, .post-text')) return;
+    if (e.target.closest('.post-preview, button, a, input, textarea, select, [contenteditable], .acts, .post-tags, .post-h, .post-text')) return;
     toggleLike(post.dataset.post, post.querySelector('[data-act="like"]'), {
       force: true,
       origin: { x: e.clientX, y: e.clientY }

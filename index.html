@@ -79,7 +79,7 @@
             <button class="textbtn" type="button" id="demo-btn">Use demo account</button>
           </form>
           <div class="login-foot" aria-hidden="true">
-            <span>Offline ready</span><i></i><span data-version>V1.7</span>
+            <span>Offline ready</span><i></i><span data-version>V1.8</span>
           </div>
         </div>
       </div>
@@ -120,7 +120,8 @@
         <section class="view search-view" id="view-explore" data-view="explore" aria-label="Explore" hidden>
           <div class="searchbar">
             <span class="search-ic" data-icon="search"></span>
-            <input class="field search" id="explore-search" name="q" type="search" placeholder="Search posts, people, #tags" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" aria-autocomplete="none" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" aria-label="Search posts, people, and tags">
+            <input class="field search" id="explore-search" name="q" type="search" placeholder="Search posts, people, tags" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" aria-autocomplete="none" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" aria-label="Search posts, people, handles, and tags">
+            <button class="search-clear" type="button" data-act="clear-search" aria-label="Clear search"><span data-icon="x"></span></button>
           </div>
           <div id="explore-body"></div>
         </section>
@@ -154,6 +155,15 @@
           <span data-icon="user"></span><span class="tab-label">Profile</span>
         </button>
       </nav>
+    </div>
+
+    <div class="process-veil" id="process-veil" aria-hidden="true">
+      <div class="process-card" role="status" aria-live="polite">
+        <span class="process-ic" data-icon="image"></span>
+        <div class="process-title">Converting to AVIF</div>
+        <p class="process-note" id="process-note">Processing photos on this device.</p>
+        <div class="process-bar" aria-hidden="true"><span id="process-fill"></span></div>
+      </div>
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>

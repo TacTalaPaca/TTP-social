@@ -6,7 +6,7 @@ Koinara is a fast single-page app with four tabs: Feed, Explore, Chat, and Profi
 
 - Live demo: https://tactalapaca.github.io/TTP-social/
 - Repository: https://github.com/TacTalaPaca/TTP-social
-- Version: 1.7
+- Version: 1.8
 - License: PolyForm Noncommercial 1.0.0
 
 ## Features
@@ -15,13 +15,18 @@ Koinara is a fast single-page app with four tabs: Feed, Explore, Chat, and Profi
 - Works from `file://` and over HTTP.
 - Light and dark themes.
 - Local accounts, posts, replies, chats, follows, saves, and likes.
-- Compressed WebP uploads with a full-screen crop editor.
+- A larger local demo database: 28 accounts, 121 posts, and 138 comments.
+- Curated Explore with trending tags, suggested people, a ranked discover feed, and recent photos.
+- Search by text, #tag, or @handle with ranked, paginated results.
+- Locally compressed AVIF uploads with a full-screen crop editor. Crops are baked into new AVIF files on publish and Save.
 - Up to five photos per post, with shared aspect ratio and per-photo pan and zoom.
 - One-photo-per-swipe carousels.
 - Pinch-to-zoom on post photos with elastic return.
+- Profile photos open in a zoomable lightbox with a tap-anywhere close.
 - Mobile gestures, keyboard navigation, and installable PWA support.
 - Standalone installed app with a neutral launch surface; browser system UI follows the theme.
 - Cross-platform icons, including maskable and monochrome Android variants and an Apple touch icon.
+- Exact unread count pills in chat rows, including a 137-message conversation.
 - Offline shell and media cache.
 
 ## Run locally
@@ -66,5 +71,6 @@ Required Notice: Copyright TacTalaPaca (https://github.com/TacTalaPaca)
 
 - Typeface: Atkinson Hyperlegible Next, SIL Open Font License 1.1. See `assets/fonts/OFL.txt`.
 - Icons: Lucide, ISC License. See `assets/icons/LICENSE`.
+- AVIF encoder: `@saschazar/wasm-avif`, MIT License. See `assets/avif/LICENSE`.
 - Brand mark and app icon: TacTalaPaca.
-- Demo photos are bundled for demonstration.
+- Demo photos are bundled for demonstration. Seed photos p19 to p38 are from Unsplash contributors via Lorem Picsum. See `assets/img/CREDITS.md`.

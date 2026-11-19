@@ -27,6 +27,7 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - Do not add loading spinners, skeletons, or artificial delays.
 - Keep scroll positions stable across refresh and re-render. Use `overflow-anchor: none` and preserve scroll when replacing lists.
 - Use the shared `--ease` curve for page, layer, compose, and carousel motion so transitions flow consistently.
+- Every dimming veil fades with the same `--t-veil` timing and `--ease` in both directions. Do not give a veil its own open or close timing, and keep a layer alive until its veil has faded.
 - Keep the DOM small. Do not re-render a whole view during a transition.
 - Respect `prefers-reduced-motion`.
 - Avoid effects that force a full repaint, such as backdrop filters or large blurred shadows.
@@ -41,7 +42,7 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - The mobile unread dot sits at the optical center of the chat bubble, not the center of the icon box.
 - The app icon sources are the normal, maskable, and monochrome SVGs in `assets/icons`. Commit the PNG exports so Android, iOS, and PWABuilder can use them. Keep the maskable mark inside the central 80% safe circle with a full-bleed background. Do not use transparency for the normal or Apple icons.
 - The sidebar brand is a centered two-line lockup. The wordmark and byline share the same width.
-- Avatars, post photos, grids, and the brand mark use the same corner radius as buttons and panels. Do not give avatars or logos their own circular or percentage radius.
+- Profile pictures are circles. Use a 50% radius on every avatar, avatar button, and the profile photo lightbox stage. Post photos, grids, buttons, panels, and the brand mark keep the shared `--r`.
 - Keep margins equal and spacing consistent. Use the `--gutter` token.
 - Use one shared corner radius from `--r` on straight elements. Pills are reserved for the tab bar and mobile tabs.
 - Do not add page-title bars. Headers belong to layers only.
@@ -56,7 +57,7 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - Desktop sidebar tabs use a subtle border and 9px vertical gaps.
 - Mobile tab selection uses one short shared fade for icon, label, and background. Do not stagger them or animate the icon separately.
 - Profile tab changes animate only the list below the tabs, with a 300ms fade and a 16px lift. Never move or fade the profile header or the tabs.
-- Keep browser and password-manager autofill buttons out of search, comment, and profile fields.
+- Keep browser and password-manager autofill buttons out of search, comment, and profile fields. Chrome's keyboard autofill accessory is browser UI above the page and cannot be removed by markup or CSS. Keep the page fields marked for opt-out and accept that platform behavior.
 - Hover effects only on devices that can hover. Use the 120ms shared easing for hover transitions. Touch devices get active feedback on navigation controls. Post action icons (like, reply, save, share) never change color or opacity on press, and icon-only actions never get hover styling on touch.
 - Scope hover rules with `@media (any-hover: hover)` instead of undoing them with a touch reset.
 - The Chromium scrollbar is a thin overlay that takes no layout space. Firefox keeps its native thin scrollbar.
@@ -86,7 +87,9 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 ## Feed, Explore, and people
 
 - Feed shows only posts from the current user and followed users.
-- Explore shows every post, plus people, tags, and photos.
+- Explore is curated, not a full directory. Show trending tags, a few suggested people, a ranked discover feed, and recent photos. Use search for the rest.
+- Search supports #tag, @handle, and plain words. Rank results, show counts, and reveal more results incrementally.
+- Never reuse one seed photo across multiple posts.
 - Followers and Following counts open searchable people lists.
 - The current user follows only a subset of the seeded people.
 - Explore photos are deduplicated. Never show the same photo twice in the photo grid.
@@ -102,6 +105,7 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - Double-tap a post to like it. Double-tap never unlikes. If the post is already liked, replay the heart animation without changing state.
 - Keyboard `Enter` or `O` opens the focused post.
 - Action order is Like, Reply, Save, Share.
+- Post options is a full-width bottom sheet for own posts: Edit post and Delete post. Fade the veil while the sheet slides up and down with the shared ease, allow a drag down to dismiss, and confirm deletion inside the same sheet. Keep the actions and confirm views the same height and align their buttons so switching never shifts the sheet. On delete, fade the confirmation content only, then let the sheet slide away. Do not open a separate confirmation layer.
 - Action icons are large and clearly defined. Do not put pill or rounded backgrounds behind them.
 - Do not scale the like or save icon.
 - Do not add a background-color transition to the like or save buttons. Do not add a pressed color or opacity change to Like, Reply, Save, or Share on touch.
@@ -118,16 +122,16 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 
 ## Photos and the composer
 
-- Compress uploads to WebP before storing them.
+- Compress uploads to AVIF locally before storing them. Keep the bundled AVIF encoder local and use WebP only as a fallback when AVIF encoding is unavailable.
 - Seed photos are AVIF and bundled locally.
-- The composer sections are Text, Photos, Tags, and Preview.
+- The composer sections are Text, Photos, Tags, and Preview. Use dividers and the controls themselves, without section titles, step numbers, or helper copy. The preview section has no padding and renders the real post card with a browsable carousel.
 - Tags are limited to three.
 - The aspect ratio control belongs to the post flow, not Settings.
 - New posts start at Auto. Settings must not contain a Photos ratio section.
 - Auto uses the photo's natural ratio for a single photo and the majority ratio for multiple photos.
 - Tapping a photo opens the full-screen crop editor.
-- The crop editor supports drag to pan, pinch to zoom, double-tap to toggle zoom, wheel zoom, arrow-key pan, `+` and `-` zoom, `0` to reset, and a ratio chip row.
-- Crop data is normalized pan and zoom. The same renderer must produce the composer preview and the published post.
+- The crop editor supports drag to pan, pinch to zoom, double-tap to toggle zoom, wheel zoom, arrow-key pan, `+` and `-` zoom, `0` to reset, and a ratio chip row. Keep the filmstrip, ratio chips, a thick zoom slider with a full-height bordered cube handle, and a full-width Done button at the bottom. The cube forms the end of the bar, must stay inside the bar bounds, and the fill always ends at the cube center. Do not add a reset button or a remove button to the crop editor.
+- The crop editor previews with normalized pan and zoom. On publish or Save, bake the crop into a new local AVIF and discard the uncropped source. The published photo and saved profile photo must be permanently cropped, with no reversible crop metadata left behind.
 - Do not return to `object-position` based cropping.
 - Show a filmstrip for multi-photo posts.
 - Keep drafts across Back and Forward. Discard only when the user asks.
@@ -138,6 +142,7 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 ## Chat
 
 - Chat rows open a thread layer.
+- Unread conversations show a count pill at the end of the preview row. Show the exact count without a display cap.
 - The message composer sticks to the top of the keyboard.
 - Enter sends. Escape blurs the field first, then closes the layer on the next press.
 - Do not autoplay heavy animations in the message list.
@@ -147,6 +152,10 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - Profile tabs are Posts, Media, and Saved.
 - Saved has a lock icon.
 - Followers and Following open searchable people layers.
+- Profile photos open a full-screen lightbox. Tap anywhere to close it. Pinch, wheel, and drag zoom must reuse the feed photo gesture: zoom on a free stage, never inside a fixed clipping square, and spring back to rest on release with the same curve. Do not add double-tap zoom or a second gesture model.
+- The profile photo lightbox morphs from the tapped profile picture into the centred circle, and back to it on close, with a transform-only shared-element transition. Hide the source picture while the lightbox is open, restore it after the close morph finishes, keep it as the close target, and never animate width, height, top, or left.
+- Changing a profile photo opens the square crop editor with the same stage, cube slider, and Use photo action. Do not add aspect ratio controls or a separate re-crop button. Keep the upload and crop pending until Save; Back discards them. Save the baked square AVIF and discard the uncropped upload.
+- Handles allow only lowercase English letters, `_`, `-`, and `.`, up to 24 characters. Sanitise while typing and show a leading `@` inside the field.
 - Settings contains Appearance, private collections (Saved, Liked, Comments), keyboard shortcuts, install, reset, and sign out.
 - Private collections keep their lock icons.
 - Settings does not contain photo ratio controls.
@@ -175,6 +184,7 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - Media database: IndexedDB `koinara-media`, store `media`.
 - Persist the active tab, per-tab scroll, search text, profile tab, layer stack, drafts, and theme.
 - Keep uploaded avatar data URLs for fallback rendering.
+- Seed content lives in `seed.js` as normalized rows with stable IDs and foreign keys. Do not put demo content in rendering code.
 - If a blob is missing, fall back to initials.
 - Never write state back after the user clears site data while the app is open.
 - Keep `state.version` at 1 unless a real migration is written.
@@ -235,6 +245,7 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - `icons.js`: bundled Lucide subset.
 - `sw.js`: offline cache.
 - `manifest.json`: install metadata.
-- `assets/`: bundled font, icons, and AVIF photos.
+- `assets/`: bundled font, icons, AVIF photos, and the local AVIF encoder.
+- `assets/avif/`: the bundled AVIF encoder and its license.
 - `assets/icons/`: the normal, maskable, and monochrome icon sources, PNG exports, brand mark, and Lucide license.
 - `CHANGELOG.md`: version history.
