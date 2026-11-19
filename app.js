@@ -3,7 +3,7 @@
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 const KEY = 'koinara.v1';
-const APP_VERSION = '1.8';
+const APP_VERSION = '1.9';
 const hadStateOnBoot = (() => { try { return localStorage.getItem(KEY) !== null; } catch (e) { return false; } })();
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = (p = 'x') => p + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -18,7 +18,7 @@ function rel(ts) {
 }
 
 const fmt = (n) => n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : String(n);
-const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const plural = (n, word) => `${n} ${n === 1 ? word : word === 'reply' ? 'replies' : word + 's'}`;
 const HANDLE_MAX = 24;
 const slug = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[^a-z_.-]+/g, '').slice(0, HANDLE_MAX);
 
@@ -171,6 +171,7 @@ function loadState() {
       messages: mergeMap(base.messages, s.messages),
       liked: arr(s.liked) ? s.liked.filter((id) => typeof id === 'string') : [],
       bookmarked: arr(s.bookmarked) ? s.bookmarked.filter((id) => typeof id === 'string') : [],
+      likedReplies: arr(s.likedReplies) ? s.likedReplies.filter((id) => typeof id === 'string') : [],
       uploaded: map(s.uploaded) ? s.uploaded : {}
     };
   } catch (e) {
@@ -227,7 +228,7 @@ function loadUI() {
       const n = Number(v.scrolls && v.scrolls[key]);
       if (Number.isFinite(n) && n > 0) scrolls[key] = Math.min(n, 1000000);
     }
-    const kinds = new Set(['profile', 'people', 'post', 'avatar', 'chat', 'settings', 'shortcuts', 'saved', 'liked', 'comments', 'compose', 'edit', 'crop', 'confirm']);
+    const kinds = new Set(['profile', 'people', 'post', 'avatar', 'chat', 'settings', 'shortcuts', 'saved', 'liked', 'comments', 'compose', 'edit', 'crop', 'confirm', 'comment-menu']);
     const savedLayers = Array.isArray(v.layers) ? v.layers : [];
     const layers = [];
     for (const d of savedLayers.slice(0, 8)) {
@@ -294,7 +295,21 @@ function flushSaved() {
 const user = (id) => id === 'me' ? state.me : (state.users.find((u) => u.id === id) || { id, name: 'Unknown', handle: 'unknown', bio: '', joined: '2024' });
 const postById = (id) => state.posts.find((p) => p.id === id);
 const repliesOf = (id) => state.replies[id] || [];
+const replyById = (postId, replyId) => repliesOf(postId).find((r) => r.id === replyId);
+const threadShown = new Map();
+const threadKey = (postId, rootId) => postId + ':' + rootId;
 const messagesOf = (chatId) => state.messages[chatId] || [];
+
+function replyRootId(postId, replyId) {
+  const byId = new Map(repliesOf(postId).map((r) => [r.id, r]));
+  let reply = byId.get(replyId);
+  const seen = new Set();
+  while (reply && reply.parentId && byId.has(reply.parentId) && !seen.has(reply.id)) {
+    seen.add(reply.id);
+    reply = byId.get(reply.parentId);
+  }
+  return reply ? reply.id : null;
+}
 
 function myComments() {
   const out = [];
@@ -310,11 +325,19 @@ function commentItem({ reply, post }) {
   const u = user(post.userId);
   const text = (post.text || 'Photo post').trim();
   const excerpt = text.length > 140 ? text.slice(0, 140).trimEnd() + '...' : text;
-  return `<button class="comment-item" type="button" data-act="open" data-id="${post.id}">
-    <div class="comment-top"><span>On a post by ${esc(u.name)}</span><time datetime="${new Date(reply.ts).toISOString()}" data-ts="${reply.ts}">${rel(reply.ts)}</time></div>
-    <div class="comment-text">${esc(reply.text)}</div>
-    <div class="comment-quote">${esc(excerpt)}</div>
-  </button>`;
+  return `<div class="comment-item" data-reply="${reply.id}" data-post="${post.id}">
+    <div class="comment-main">
+      <button class="comment-open" type="button" data-act="open" data-id="${post.id}" aria-label="Open the post this comment is on">
+        <div class="comment-top"><span>On a post by ${esc(u.name)}</span><time datetime="${new Date(reply.ts).toISOString()}" data-ts="${reply.ts}">${rel(reply.ts)}</time></div>
+        ${replyParentHtml(reply, post.id)}
+        <div class="comment-text">${esc(reply.text)}</div>
+        <div class="comment-quote">${esc(excerpt)}</div>
+      </button>
+    </div>
+    <div class="comment-acts">
+      ${replyLikeButton(reply, post.id)}
+    </div>
+  </div>`;
 }
 
 function refreshCollectionLayers(type) {
@@ -1091,19 +1114,82 @@ function postCard(p, opts = {}) {
   </article>`;
 }
 
-function replyHtml(r) {
-  const u = user(r.userId);
-  return `<div class="reply" data-reply="${r.id}">
+function replyLiked(id) {
+  return state.likedReplies.includes(id);
+}
+
+function replyLikeButton(reply, postId) {
+  const liked = replyLiked(reply.id);
+  const likes = (reply.likes || 0) + (liked ? 1 : 0);
+  return `<button class="reply-act reply-like${liked ? ' on' : ''}" type="button" data-act="reply-like" data-id="${reply.id}" data-post="${postId}" aria-pressed="${liked}" aria-label="${liked ? 'Unlike' : 'Like'} comment, ${plural(likes, 'like')}" title="${liked ? 'Unlike' : 'Like'}">${icon('heart')}<span data-count="reply-like">${likes}</span></button>`;
+}
+
+function replyParentHtml(reply, postId) {
+  if (!reply.parentId) return '';
+  const parent = replyById(postId, reply.parentId);
+  if (!parent || parent.userId === reply.userId) return '';
+  return `<div class="reply-to">Replying to <b>@${esc(user(parent.userId).handle)}</b></div>`;
+}
+
+function replyHtml(reply, postId) {
+  const u = user(reply.userId);
+  return `<div class="reply" data-reply="${reply.id}" data-post="${postId}">
     ${av(u, 28)}
     <div class="reply-main">
-      <div class="reply-head"><span class="reply-name">${esc(u.name)}</span><span class="reply-time"><time datetime="${new Date(r.ts).toISOString()}" data-ts="${r.ts}">${rel(r.ts)}</time></span></div>
-      <div class="reply-text">${esc(r.text)}</div>
+      <div class="reply-head">
+        <span class="reply-name">${esc(u.name)}</span>
+        <span class="reply-time"><time datetime="${new Date(reply.ts).toISOString()}" data-ts="${reply.ts}">${rel(reply.ts)}</time></span>
+      </div>
+      <div class="reply-body" data-act="reply-to" data-id="${reply.id}" data-post="${postId}" role="button" tabindex="0" aria-label="Reply to ${esc(u.name)}">
+        ${replyParentHtml(reply, postId)}
+        <div class="reply-text">${esc(reply.text)}</div>
+      </div>
+    </div>
+    <div class="reply-acts">
+      ${replyLikeButton(reply, postId)}
     </div>
   </div>`;
 }
 
 function repliesHtml(postId) {
-  return repliesOf(postId).slice().sort((a, b) => a.ts - b.ts).map(replyHtml).join('');
+  const list = repliesOf(postId).slice().sort((a, b) => a.ts - b.ts);
+  const byId = new Map(list.map((r) => [r.id, r]));
+  const roots = [];
+  const children = new Map();
+  for (const reply of list) {
+    let root = reply.parentId ? byId.get(reply.parentId) : null;
+    if (!root) { roots.push(reply); continue; }
+    const seen = new Set();
+    while (root && root.parentId && byId.has(root.parentId) && !seen.has(root.id)) {
+      seen.add(root.id);
+      root = byId.get(root.parentId);
+    }
+    if (!root || root.id === reply.id) roots.push(reply);
+    else {
+      if (!children.has(root.id)) children.set(root.id, []);
+      children.get(root.id).push(reply);
+    }
+  }
+  return roots.map((root) => {
+    const kids = children.get(root.id) || [];
+    if (!kids.length) return replyHtml(root, postId);
+    const key = threadKey(postId, root.id);
+    const shown = Math.min(threadShown.get(key) || 0, kids.length);
+    const open = shown > 0;
+    const toggle = open
+      ? `<div class="thread-actions">
+          ${shown < kids.length ? `<button class="thread-link" type="button" data-act="thread-more" data-post="${postId}" data-root="${root.id}">Show more replies</button>` : ''}
+          <button class="thread-link" type="button" data-act="thread-collapse" data-post="${postId}" data-root="${root.id}">Hide replies</button>
+        </div>`
+      : `<button class="thread-link thread-open" type="button" data-act="thread-open" data-post="${postId}" data-root="${root.id}" aria-expanded="false">${icon('chevron-right')}<span>View ${plural(kids.length, 'reply')}</span></button>`;
+    return `<div class="reply-thread${open ? ' open' : ''}" data-root="${root.id}">
+      ${replyHtml(root, postId)}
+      ${open ? `<div class="thread-branch">
+        <div class="thread-body">${kids.slice(0, shown).map((reply) => replyHtml(reply, postId)).join('')}</div>
+        ${toggle}
+      </div>` : toggle}
+    </div>`;
+  }).join('');
 }
 
 function personRow(u) {
@@ -1606,86 +1692,471 @@ let tabTransitioning = false;
 
 const isTextInput = (el) => !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
 
+const HAS_VK = typeof navigator !== 'undefined' && 'virtualKeyboard' in navigator;
 let viewportRaf = 0;
 let typingTimer = 0;
-let viewportApplied = null;
+let currentKeyboardHeight = 0;
+let keyboardTargetLift = 0;
+let keyboardExtra = 0;
+let keyboardRemembered = 0;
+let keyboardSettleUntil = 0;
+let keyboardIdleTimer = 0;
+let keyboardPredictUntil = 0;
+let keyboardPadding = 0;
+let replyRevealTimer = 0;
+let vkHeight = 0;
+let fullHeight = window.innerHeight;
+
+const KB_MIN = 60;
+
+function activeComposer() {
+  const focused = document.activeElement;
+  const direct = focused && focused.closest && focused.closest('.replybar, .composer, .compose-foot');
+  if (direct) return direct;
+  for (let i = layers.length - 1; i >= 0; i--) {
+    const found = layers[i].el.querySelector('.replybar, .composer, .compose-foot');
+    if (found) return found;
+  }
+  return null;
+}
+
+let composerHeightTimer = 0;
+
+function applyComposerHeight() {
+  composerHeightTimer = 0;
+  const composer = activeComposer();
+  const root = document.documentElement;
+  if (!composer) {
+    root.style.removeProperty('--composer-height');
+    return;
+  }
+  // Keep the reply bar height stable while the keyboard is open. The chip
+  // collapsing must not shrink the scroll padding and clamp the thread.
+  if (currentKeyboardHeight > 0 && composer.classList.contains('replybar')) return;
+  const height = Math.round(composer.getBoundingClientRect().height);
+  if (height > 0) {
+    const next = height + 'px';
+    if (root.style.getPropertyValue('--composer-height') !== next) root.style.setProperty('--composer-height', next);
+  }
+}
+
+/* The chip transition changes the bar height over a few frames. Debounce the
+   root custom property so the padding is not recalculated every frame. */
+function syncComposerHeight() {
+  clearTimeout(composerHeightTimer);
+  composerHeightTimer = setTimeout(applyComposerHeight, 90);
+}
+
+/* Reveal with native smooth scrolling on open. The return uses a compositor
+   track with the bar curve, a little longer and a small delay. */
+let replyScrollAnim = null;
+let replyScrollAnimating = false;
+let replyScrollSaveTimer = 0;
+
+function endReplyScrollAnim() {
+  replyScrollAnimating = false;
+  clearTimeout(replyScrollSaveTimer);
+  replyScrollSaveTimer = 0;
+  saveUI();
+}
+
+/* Animate the thread on the compositor with the same duration and curve as
+   the bar. The scroll position is committed first, and a transform on the
+   track makes the visual start where it was. */
+function scrollReplyTo(scroller, to, mode = 'open') {
+  const track = scroller.querySelector('.detail-track');
+  const from = scroller.scrollTop;
+  if (Math.abs(to - from) < 0.5) return;
+  if (mode === 'open') {
+    if (replyScrollAnim) {
+      replyScrollAnim.cancel();
+      replyScrollAnim = null;
+      endReplyScrollAnim();
+    }
+    if (track) {
+      track.style.transform = '';
+      track.style.willChange = '';
+    }
+    scroller.scrollTo({ top: to, behavior: reducedMotion() ? 'auto' : 'smooth' });
+    return;
+  }
+  if (!track || reducedMotion() || typeof track.animate !== 'function') {
+    scroller.scrollTop = to;
+    return;
+  }
+  const android = document.documentElement.classList.contains('android');
+  const close = mode === 'close';
+  // The thread trails the bar by a few milliseconds and takes a little
+  // longer, so it follows the field instead of being welded to it.
+  const duration = android ? (close ? 240 : 340) : (close ? 220 : 260);
+  const delay = android ? 20 : 15;
+  const easing = android
+    ? (close ? 'cubic-bezier(.3, .3, .2, 1)' : 'cubic-bezier(.2, 0, 0, 1)')
+    : 'cubic-bezier(.22, .78, .2, 1)';
+  if (replyScrollAnim) {
+    replyScrollAnim.cancel();
+    replyScrollAnim = null;
+  }
+  const delta = to - from;
+  track.style.willChange = 'transform';
+  track.style.transform = `translate3d(0, ${delta}px, 0)`;
+  replyScrollAnimating = true;
+  clearTimeout(replyScrollSaveTimer);
+  replyScrollSaveTimer = setTimeout(endReplyScrollAnim, duration + delay + 150);
+  scroller.scrollTop = to;
+  const anim = track.animate(
+    [{ transform: `translate3d(0, ${delta}px, 0)` }, { transform: 'translate3d(0, 0, 0)' }],
+    { duration, delay, easing }
+  );
+  replyScrollAnim = anim;
+  anim.onfinish = () => {
+    if (replyScrollAnim === anim) replyScrollAnim = null;
+    track.style.transform = '';
+    track.style.willChange = '';
+    endReplyScrollAnim();
+  };
+}
+
+/* Keep the comment being answered a fixed distance above the bar on every
+   keyboard frame. It starts and ends with the transform, so the page rides
+   with the textbox instead of scrolling after it. */
+function followReplyTarget(lift) {
+  const composer = activeComposer();
+  if (!composer || !composer.classList.contains('replybar')) return;
+  const layer = composer.closest('.layer');
+  if (!layer) return;
+  const entry = layers.find((e) => e.el === layer);
+  if (!entry || !entry.replyTo || !entry.replyBarFinal) return;
+  const scroller = layer.querySelector('.layer-body');
+  if (!scroller) return;
+  const node = layer.querySelector(`.reply[data-reply="${entry.replyTo.id}"], .comment-item[data-reply="${entry.replyTo.id}"]`);
+  if (!node) return;
+  // Do not scroll into space that the keyboard padding has not reserved yet.
+  if (lift > 0 && keyboardPadding + 24 < lift) return;
+  if (lift > 0 && !entry.replyScrollSession) {
+    entry.replyScrollSession = true;
+    entry.replyScrollBase = scroller.scrollTop;
+    entry.replyScrollUser = false;
+    if (!entry.replyScrollWatch) {
+      const mark = () => { entry.replyScrollUser = true; };
+      entry.replyScrollMark = mark;
+      entry.replyScrollWatch = true;
+      scroller.addEventListener('wheel', mark, { passive: true });
+      scroller.addEventListener('touchmove', mark, { passive: true });
+    }
+  }
+  const barTop = lift > 0 ? window.innerHeight - lift - entry.replyBarFinal : composer.getBoundingClientRect().top;
+  const topEdge = scroller.getBoundingClientRect().top + 8;
+  const bottomEdge = barTop - 12;
+  const nr = node.getBoundingClientRect();
+  const delta = nr.bottom > bottomEdge ? nr.bottom - bottomEdge : (nr.top < topEdge ? nr.top - topEdge : 0);
+  const max = scroller.scrollHeight - scroller.clientHeight;
+  const to = Math.max(0, Math.min(max, scroller.scrollTop + delta));
+  scrollReplyTo(scroller, to);
+}
+
+function returnReplyScroll() {
+  const composer = activeComposer();
+  if (!composer || !composer.classList.contains('replybar')) return;
+  const layer = composer.closest('.layer');
+  const entry = layers.find((e) => e.el === layer);
+  if (!entry || !entry.replyTo) return;
+  const scroller = layer.querySelector('.layer-body');
+  if (!scroller) return;
+
+  if (entry.replyScrollWatch) {
+    scroller.removeEventListener('wheel', entry.replyScrollMark);
+    scroller.removeEventListener('touchmove', entry.replyScrollMark);
+    entry.replyScrollWatch = false;
+    entry.replyScrollMark = null;
+  }
+  entry.replyScrollSession = false;
+
+  // The padding is still at the open value while the bar drops. Work out the
+  // room that will exist once it is released so the return lands inside it.
+  const openMax = scroller.scrollHeight - scroller.clientHeight;
+  const closedMax = Math.max(0, openMax - Math.max(0, keyboardPadding));
+  let to;
+  if (entry.replyScrollUser) {
+    entry.replyScrollUser = false;
+    entry.replyScrollBase = null;
+    // A real scroll is kept, clamped to the space that will remain.
+    to = Math.min(scroller.scrollTop, closedMax);
+  } else if (entry.replyScrollBase == null) {
+    to = Math.min(scroller.scrollTop, closedMax);
+  } else {
+    to = Math.min(entry.replyScrollBase, closedMax);
+  }
+  scrollReplyTo(scroller, to, 'close');
+}
+
+function settleChatView() {
+  const composer = activeComposer();
+  const layer = composer && composer.closest('.layer.thread');
+  if (!layer) return;
+  const scroller = layer.querySelector('.msgs');
+  if (!scroller) return;
+  if (scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 160) {
+    scroller.scrollTop = scroller.scrollHeight;
+  }
+}
+
+/* Move the bars with an inline transform. A CSS transition does the
+   interpolation on the compositor, so a busy main thread cannot turn the
+   motion into a slideshow, and a late or coarse IME report cannot jump. */
+let keyboardBars = [];
+
+function cacheKeyboardBars() {
+  keyboardBars = $$('.replybar, .composer, .compose-foot');
+}
+
+function applyKeyboardLift(value) {
+  const lift = value > 0.05 ? Math.round(value * 10) / 10 : 0;
+  const transform = lift ? `translate3d(0, ${-lift}px, 0)` : '';
+  if (!keyboardBars.length) cacheKeyboardBars();
+  for (const el of keyboardBars) el.style.transform = transform;
+}
+
+function scheduleKeyboardSettle() {
+  document.documentElement.classList.add('kb-moving');
+  clearTimeout(keyboardIdleTimer);
+  keyboardIdleTimer = setTimeout(() => {
+    const target = keyboardTargetLift;
+    const padChanged = keyboardPadding !== target;
+    keyboardPadding = target;
+    document.documentElement.classList.remove('kb-moving');
+    if (padChanged) {
+      document.documentElement.style.setProperty('--keyboard-px', target + 'px');
+      document.documentElement.style.setProperty('--keyboard-extra', target ? keyboardExtra + 'px' : '0px');
+    }
+    if (target) {
+      settleChatView();
+      if (padChanged) followReplyTarget(target);
+    }
+  }, 330);
+}
+
+function keyboardExtraFor(bar) {
+  if (!bar) return 0;
+  // The field must clear the IME toolbar on Android, and the prediction must
+  // not add a gap when the home indicator already provides one.
+  const pad = parseFloat(getComputedStyle(bar).paddingBottom) || 0;
+  const gap = document.documentElement.classList.contains('android') ? 40 : 20;
+  return Math.max(0, Math.round(gap - pad));
+}
+
+function setKeyboardTarget(raw, predicted = false) {
+  // A real inset starts below the 60px viewport-noise threshold used by the
+  // visualViewport fallback, so accept any visible height here.
+  let height = raw > 2 ? Math.round(raw) : 0;
+  if (height > 0 && performance.now() < keyboardSettleUntil && !isTextInput(document.activeElement)) height = 0;
+  // The prediction already started the motion. Mid-animation reports are
+  // intermediate positions, not the final height, so they must not pull the
+  // bar backwards. The last report after the window still corrects it.
+  if (height > 0 && !predicted && performance.now() < keyboardPredictUntil) return;
+  // Ignore one or two pixels of IME noise so a settled bar is not nudged.
+  if (height > 0 && currentKeyboardHeight > 0 && Math.abs(height - currentKeyboardHeight) <= 2) return;
+  if (height > KB_MIN) keyboardRemembered = height;
+  if (height === currentKeyboardHeight && (height === 0 || keyboardTargetLift === height + keyboardExtra)) return;
+  const opening = height > 0 && currentKeyboardHeight === 0;
+  const closing = height === 0 && currentKeyboardHeight > 0;
+  currentKeyboardHeight = height;
+  if (opening) {
+    keyboardExtra = keyboardExtraFor(activeComposer());
+    document.documentElement.style.setProperty('--keyboard-extra', keyboardExtra + 'px');
+    keyboardPredictUntil = predicted ? performance.now() + 330 : 0;
+  }
+  keyboardTargetLift = height > 0 ? height + keyboardExtra : 0;
+  const root = document.documentElement;
+  root.classList.toggle('kb-open', height > 0);
+  if (opening) {
+    keyboardPadding = keyboardTargetLift;
+    root.style.setProperty('--keyboard-px', keyboardPadding + 'px');
+  }
+  if (!height) fullHeight = Math.max(fullHeight, window.innerHeight);
+  if (opening || closing) {
+    syncComposerHeight();
+    cacheKeyboardBars();
+  }
+  applyKeyboardLift(keyboardTargetLift);
+  scheduleKeyboardSettle();
+  if (height > 0) followReplyTarget(keyboardTargetLift);
+  else if (closing) returnReplyScroll();
+}
+
+function envKeyboardHeight() {
+  const probe = $('#kb-probe');
+  return probe ? Math.round(probe.getBoundingClientRect().height) : 0;
+}
+
+function keyboardLift(rect) {
+  if (!rect || !(Number(rect.height) > 0)) return 0;
+  const base = Math.max(fullHeight, window.innerHeight);
+  const top = Number.isFinite(rect.top) ? rect.top : base - (Number(rect.height) || 0);
+  return Math.max(0, Math.round(base - top));
+}
+
+function syncKeyboardFromViewport() {
+  if (performance.now() < keyboardSettleUntil && !isTextInput(document.activeElement)) {
+    setKeyboardTarget(0);
+    return;
+  }
+  // Chromium reports the keyboard geometry as it animates. That is the
+  // closest thing to the native inset, so it wins when present.
+  if (HAS_VK && navigator.virtualKeyboard) {
+    const rect = navigator.virtualKeyboard.boundingRect;
+    if (rect && rect.height > 0) {
+      vkHeight = keyboardLift(rect);
+    } else {
+      vkHeight = 0;
+    }
+    if (vkHeight > 2) {
+      setKeyboardTarget(vkHeight);
+      return;
+    }
+  }
+  const envHeight = envKeyboardHeight();
+  if (envHeight > 2) {
+    setKeyboardTarget(envHeight);
+    return;
+  }
+  const vv = window.visualViewport;
+  if (!vv) return;
+  // iOS can shrink window.innerHeight with the keyboard. The saved full
+  // height is the stable layout baseline for the keyboard inset.
+  const baseline = Math.max(fullHeight, window.innerHeight);
+  const raw = Math.max(0, baseline - vv.height - (vv.offsetTop || 0));
+  setKeyboardTarget(raw > KB_MIN ? raw : 0);
+}
 
 function syncViewport() {
   if (viewportRaf) return;
   viewportRaf = requestAnimationFrame(() => {
     viewportRaf = 0;
-    const vv = window.visualViewport;
-    const root = document.documentElement;
-    const layout = Math.max(root.clientHeight || 0, window.innerHeight || 0);
-    let height = vv && vv.height ? vv.height : window.innerHeight;
-    let top = vv && Number.isFinite(vv.offsetTop) ? vv.offsetTop : 0;
-    if (!height || height < 160) height = window.innerHeight;
-    if (!Number.isFinite(top) || Math.abs(top) < .5) top = 0;
-    const kb = Math.max(0, Math.round(layout - (height + top)));
     const focused = isTextInput(document.activeElement);
-    root.classList.toggle('typing', focused);
-    // Only pin the shell when the keyboard actually overlays the layout
-    // viewport. Otherwise let 100dvh follow the browser chrome natively.
-    const open = focused && kb > 90;
-    const key = `${open ? 1 : 0}:${open ? Math.round(height) : 0}:${open ? Math.round(top) : 0}`;
-    if (key !== viewportApplied) {
-      viewportApplied = key;
-      if (open) {
-        root.style.setProperty('--app-h', Math.round(height) + 'px');
-        root.style.setProperty('--app-top', Math.round(top) + 'px');
-      } else {
-        root.style.removeProperty('--app-h');
-        root.style.removeProperty('--app-top');
-      }
-      root.style.setProperty('--kb', kb + 'px');
-      root.classList.toggle('kb-open', open);
-      scheduleScrollbar();
-    }
-    if (open) scheduleScrollbar();
+    document.documentElement.classList.toggle('typing', focused);
+    syncKeyboardFromViewport();
   });
 }
 
-function revealFocused(el) {
-  if (!el || !el.isConnected) return;
-  const scroller = el.closest('.layer-body, .msgs, .view');
-  if (!scroller) return;
-  const er = el.getBoundingClientRect();
-  const sr = scroller.getBoundingClientRect();
-  if (er.bottom > sr.bottom - 14) scroller.scrollTop += er.bottom - sr.bottom + 18;
-  else if (er.top < sr.top + 14) scroller.scrollTop -= sr.top - er.top + 18;
+function settleKeyboard() {
+  if (isTextInput(document.activeElement)) return;
+  const stuck = window.innerHeight < fullHeight - 60;
+  if (!stuck && currentKeyboardHeight === 0) return;
+  keyboardSettleUntil = performance.now() + 500;
+  vkHeight = 0;
+  const root = document.documentElement;
+  root.classList.add('kb-recalc');
+  void root.offsetHeight;
+  root.classList.remove('kb-recalc');
+  window.scrollTo(0, 0);
+  setKeyboardTarget(0);
+  setTimeout(() => {
+    if (!isTextInput(document.activeElement)) setKeyboardTarget(0);
+  }, 150);
 }
 
 function initViewport() {
+  document.documentElement.classList.toggle('android', /Android/i.test(navigator.userAgent));
   const vv = window.visualViewport;
-  if (vv) {
-    vv.addEventListener('resize', syncViewport, { passive: true });
-    vv.addEventListener('scroll', syncViewport, { passive: true });
+  const isComposer = (el) => !!(el && el.closest && el.closest('.replybar, .composer, .compose-foot, .compose-area'));
+
+  if (HAS_VK && navigator.virtualKeyboard) {
+    try { navigator.virtualKeyboard.overlaysContent = true; } catch (e) {}
+    const readKeyboard = (e) => {
+      const rect = (e && e.target && e.target.boundingRect) || navigator.virtualKeyboard.boundingRect;
+      vkHeight = keyboardLift(rect);
+      setKeyboardTarget(vkHeight > 2 ? vkHeight : 0);
+    };
+    navigator.virtualKeyboard.addEventListener('geometrychange', readKeyboard);
+    readKeyboard();
   }
-  addEventListener('resize', syncViewport, { passive: true });
-  addEventListener('orientationchange', () => setTimeout(syncViewport, 80));
+  if (vv) {
+    vv.addEventListener('resize', () => {
+      syncKeyboardFromViewport();
+      syncViewport();
+    }, { passive: true });
+    vv.addEventListener('scroll', () => {
+      syncKeyboardFromViewport();
+      syncViewport();
+      if (window.scrollY || window.scrollX) window.scrollTo(0, 0);
+    }, { passive: true });
+  }
+
+  addEventListener('resize', () => {
+    if (!currentKeyboardHeight && !isTextInput(document.activeElement) && performance.now() >= keyboardSettleUntil && (!vv || vv.height >= window.innerHeight - 2)) {
+      fullHeight = window.innerHeight;
+    }
+    syncViewport();
+  }, { passive: true });
+  addEventListener('orientationchange', () => setTimeout(() => {
+    keyboardRemembered = 0;
+    if (!currentKeyboardHeight && !isTextInput(document.activeElement)) fullHeight = window.innerHeight;
+    syncViewport();
+  }, 120));
+
+  // The VirtualKeyboard env can drive the composer even when the JS geometry
+  // path is unavailable. Read it through a probe so kb-open and the padding
+  // stay in sync with the actual keyboard inset.
+  const probe = $('#kb-probe');
+  let envKeyboard = 0;
+  if (probe && typeof ResizeObserver !== 'undefined') {
+    const readProbe = () => {
+      const height = Math.round(probe.getBoundingClientRect().height);
+      if (height > 2) {
+        envKeyboard = height;
+        setKeyboardTarget(height);
+      } else if (envKeyboard > 0) {
+        envKeyboard = 0;
+        setKeyboardTarget(0);
+      }
+    };
+    new ResizeObserver(readProbe).observe(probe);
+    readProbe();
+  }
+
+  document.addEventListener('focusin', (e) => {
+    if (isComposer(e.target)) requestAnimationFrame(() => window.scrollTo(0, 0));
+  }, true);
+  document.addEventListener('touchstart', (e) => {
+    if (isComposer(e.target)) requestAnimationFrame(() => window.scrollTo(0, 0));
+  }, { passive: true, capture: true });
+
   const onFocus = (e) => {
     if (!isTextInput(e.target)) return;
     document.documentElement.classList.add('typing');
+    if (isComposer(e.target)) {
+      requestAnimationFrame(() => window.scrollTo(0, 0));
+      // Start the lift on the same frame as the focus so the bar moves with
+      // the IME instead of waiting for the first geometry report.
+      if (currentKeyboardHeight === 0 && keyboardRemembered > KB_MIN && matchMedia('(pointer: coarse)').matches) {
+        setKeyboardTarget(keyboardRemembered, true);
+      }
+    }
     clearTimeout(typingTimer);
     typingTimer = setTimeout(() => {
-      syncViewport();
-      revealFocused(e.target);
+      syncKeyboardFromViewport();
+      syncComposerHeight();
     }, 260);
-    setTimeout(() => revealFocused(e.target), 60);
   };
   const onBlur = () => {
     clearTimeout(typingTimer);
+    requestAnimationFrame(() => {
+      if (isTextInput(document.activeElement)) return;
+      document.documentElement.classList.remove('typing');
+      vkHeight = 0;
+      keyboardSettleUntil = performance.now() + 280;
+      setKeyboardTarget(0);
+    });
     typingTimer = setTimeout(() => {
-      if (!isTextInput(document.activeElement)) document.documentElement.classList.remove('typing');
-      syncViewport();
-    }, 120);
+      if (isTextInput(document.activeElement)) return;
+      settleKeyboard();
+    }, 200);
   };
   document.addEventListener('focusin', onFocus);
   document.addEventListener('focusout', onBlur);
   document.addEventListener('focus', onFocus, true);
   document.addEventListener('blur', onBlur, true);
-  // Some embedded/mobile browsers do not emit focus events for scripted or
-  // tapped inputs. Re-check after the tap has settled as a safety net.
   document.addEventListener('pointerup', () => {
     setTimeout(() => {
       const el = document.activeElement;
@@ -1694,11 +2165,12 @@ function initViewport() {
     }, 50);
   }, true);
   syncViewport();
+  syncComposerHeight();
 }
 
 function bindKeyboard() {
-  // The app shell is sized from visualViewport globally, so layers only need
-  // to keep their own scroll position. Focus reveal is handled in initViewport.
+  // Keyboard positioning lives in initViewport. Layers only need to keep their
+  // own scroll position, which the composer padding and focus reveal handle.
   return () => {};
 }
 
@@ -2017,16 +2489,28 @@ function mountLayer(html, opts = {}) {
   layersRoot.append(el);
 
   const entry = { el, cleanup: null, descriptor: opts.descriptor || null, capture: opts.capture || null, scrollEl: null };
-  const kb = bindKeyboard(el);
+  const keyboard = bindKeyboard(el);
+  entry.composer = el.querySelector('.replybar, .composer, .compose-foot');
+  if (entry.composer && keyboardTargetLift > 0) {
+    entry.composer.style.transform = `translate3d(0, ${-Math.round(keyboardTargetLift)}px, 0)`;
+  }
+  if (entry.composer && typeof ResizeObserver !== 'undefined') {
+    entry.composerObserver = new ResizeObserver(() => syncComposerHeight());
+    entry.composerObserver.observe(entry.composer);
+  }
   entry.cleanup = () => {
+    if (entry.composerObserver) {
+      entry.composerObserver.disconnect();
+      entry.composerObserver = null;
+    }
     if (opts.onClose) opts.onClose();
-    kb();
+    keyboard();
   };
 
   entry.scrollEl = el.querySelector('.layer-body, .msgs');
   if (entry.scrollEl) {
     entry.scrollEl.addEventListener('scroll', () => {
-      if (!restoringLayers) saveUI();
+      if (!restoringLayers && !replyScrollAnimating) saveUI();
     }, { passive: true });
   }
 
@@ -2062,6 +2546,7 @@ function closeVisual(entry, immediate = false) {
     entry.cleanup();
     entry.cleanup = null;
   }
+  syncComposerHeight();
   const done = () => {
     entry.el.remove();
     if (entry.afterClose) {
@@ -2159,6 +2644,142 @@ function toggleLike(id, btn, opts = {}) {
   refreshCollectionLayers('liked');
 }
 
+function findPostEntry(postId) {
+  return layers.find((entry) => entry.descriptor && entry.descriptor.type === 'post' && entry.descriptor.id === postId) || null;
+}
+
+function activePostEntry(postId) {
+  const top = layers[layers.length - 1];
+  return top && top.descriptor && top.descriptor.type === 'post' && top.descriptor.id === postId ? top : null;
+}
+
+function updateReplyLikes(postId, replyId) {
+  const reply = replyById(postId, replyId);
+  if (!reply) return;
+  const liked = replyLiked(replyId);
+  const likes = (reply.likes || 0) + (liked ? 1 : 0);
+  $$(`[data-reply="${replyId}"] [data-act="reply-like"]`).forEach((btn) => {
+    btn.classList.toggle('on', liked);
+    btn.setAttribute('aria-pressed', String(liked));
+    btn.setAttribute('aria-label', `${liked ? 'Unlike' : 'Like'} comment, ${plural(likes, 'like')}`);
+    btn.title = liked ? 'Unlike' : 'Like';
+    const count = btn.querySelector('[data-count="reply-like"]');
+    if (count) count.textContent = likes;
+  });
+}
+
+function toggleReplyLike(postId, replyId, btn) {
+  if (!replyById(postId, replyId)) return;
+  const i = state.likedReplies.indexOf(replyId);
+  const liking = i < 0;
+  if (i >= 0) state.likedReplies.splice(i, 1);
+  else state.likedReplies.push(replyId);
+  save();
+  updateReplyLikes(postId, replyId);
+  if (liking) ringBurst(btn);
+  refreshCollectionLayers('comments');
+}
+
+function deleteReply(postId, replyId) {
+  const list = state.replies[postId];
+  if (!list) return;
+  const reply = list.find((r) => r.id === replyId);
+  if (!reply || reply.userId !== 'me') return;
+  const parentId = reply.parentId || null;
+  for (const r of list) if (r.parentId === replyId) r.parentId = parentId;
+  state.replies[postId] = list.filter((r) => r.id !== replyId);
+  state.likedReplies = state.likedReplies.filter((rid) => rid !== replyId);
+  save();
+  updatePostUI(postId);
+  const entry = findPostEntry(postId);
+  if (entry) {
+    if (entry.replyTo && entry.replyTo.id === replyId) entry.clearReplyTo();
+    if (entry.refreshReplies) entry.refreshReplies();
+  }
+  refreshCollectionLayers('comments');
+  toast('Comment deleted');
+}
+
+function refreshPostThreads(postId) {
+  const entry = findPostEntry(postId);
+  if (entry && entry.refreshReplies) entry.refreshReplies();
+}
+
+function openThread(postId, rootId) {
+  threadShown.set(threadKey(postId, rootId), 10);
+  refreshPostThreads(postId);
+}
+
+function collapseThread(postId, rootId) {
+  const key = threadKey(postId, rootId);
+  const entry = findPostEntry(postId);
+  const branch = entry && entry.el.querySelector(`.reply-thread[data-root="${rootId}"] .thread-branch`);
+  if (!branch || branch.classList.contains('closing')) return;
+  if (reducedMotion()) {
+    threadShown.set(key, 0);
+    refreshPostThreads(postId);
+    return;
+  }
+  branch.classList.add('closing');
+  setTimeout(() => {
+    threadShown.set(key, 0);
+    const live = findPostEntry(postId);
+    if (live && live.refreshReplies) live.refreshReplies();
+  }, 170);
+}
+
+function moreThread(postId, rootId) {
+  const key = threadKey(postId, rootId);
+  threadShown.set(key, (threadShown.get(key) || 10) + 10);
+  refreshPostThreads(postId);
+}
+
+function openCommentMenu(postId, replyId) {
+  const reply = replyById(postId, replyId);
+  if (!reply || reply.userId !== 'me') return null;
+  const entry = mountLayer(`
+    <div class="sheet-backdrop" data-act="close" aria-hidden="true"></div>
+    <div class="action-sheet comment-sheet" role="dialog" aria-modal="true" aria-label="Comment options" data-view="actions">
+      <div class="sheet-grip" aria-hidden="true"></div>
+      <div class="sheet-stage">
+        <div class="sheet-view" data-view="actions">
+          <button class="sheet-action danger" type="button" data-act="comment-menu-delete">${icon('trash-2')}<span>Delete comment</span></button>
+          <button class="sheet-cancel" type="button" data-act="close">Cancel</button>
+        </div>
+        <div class="sheet-view is-off" data-view="confirm" aria-hidden="true">
+          <button class="sheet-delete" type="button" data-act="comment-menu-confirm" data-id="${replyId}" data-post="${postId}">Confirm delete</button>
+          <button class="sheet-back" type="button" data-act="comment-menu-back">Cancel</button>
+        </div>
+      </div>
+    </div>
+  `, { up: true, cls: 'post-menu-layer comment-menu-layer', descriptor: { type: 'comment-menu', id: replyId } });
+  entry.closeMs = VEIL_MS + 20;
+  return entry;
+}
+
+function showCommentMenuView(sheet, view) {
+  if (!sheet) return;
+  sheet.dataset.view = view;
+  $$('.sheet-view', sheet).forEach((box) => {
+    const off = box.dataset.view !== view;
+    box.classList.toggle('is-off', off);
+    box.setAttribute('aria-hidden', String(off));
+  });
+  const target = sheet.querySelector(view === 'confirm' ? '[data-act="comment-menu-confirm"]' : '[data-act="comment-menu-delete"]');
+  if (target) target.focus({ preventScroll: true });
+}
+
+function focusReplyTarget(postId, replyId) {
+  if (!postId || !replyById(postId, replyId)) return;
+  const existing = activePostEntry(postId);
+  const entry = existing || openPost(postId);
+  if (!entry || !entry.setReplyTo) return;
+  entry.setReplyTo(replyId, !!existing);
+  if (!existing && entry.focusReplyInput) {
+    setTimeout(() => { if (entry.el.isConnected) entry.focusReplyInput(); }, 320);
+  }
+}
+
 function mediaInk(card) {
   const imgs = $$('.media img', card);
   if (!imgs.length) return null;
@@ -2239,12 +2860,10 @@ function likeBurst(id, btn, origin) {
   setTimeout(() => ripple.remove(), 800);
 }
 
-function saveBurst(id, btn) {
-  const card = btn ? btn.closest('.post') : document.querySelector(`[data-post="${id}"]`);
-  if (!card) return;
-  const mark = btn || card.querySelector('[data-act="bookmark"]');
-  const icon = mark && mark.querySelector('.i');
-  const rect = (icon || mark || card).getBoundingClientRect();
+function ringBurst(el) {
+  if (!el) return;
+  const icon = el.querySelector('.i') || el;
+  const rect = icon.getBoundingClientRect();
   const ripple = document.createElement('span');
   ripple.className = 'like-ripple save-ripple';
   ripple.setAttribute('aria-hidden', 'true');
@@ -2252,6 +2871,12 @@ function saveBurst(id, btn) {
   ripple.style.top = (rect.top + rect.height / 2) + 'px';
   document.body.append(ripple);
   setTimeout(() => ripple.remove(), 800);
+}
+
+function saveBurst(id, btn) {
+  const card = btn ? btn.closest('.post') : document.querySelector(`[data-post="${id}"]`);
+  if (!card) return;
+  ringBurst(btn || card.querySelector('[data-act="bookmark"]'));
 }
 
 function toggleBookmark(id, btn) {
@@ -2557,36 +3182,136 @@ function openPost(id) {
   const entry = mountLayer(`
     ${layerHead('Post')}
     <div class="layer-body" id="detail-body">
-      ${postCard(p, { detail: true })}
-      <div class="replies" id="detail-replies">${repliesHtml(id)}</div>
+      <div class="detail-track" id="detail-track">
+        ${postCard(p, { detail: true })}
+        <div class="replies" id="detail-replies" data-post="${id}">${repliesHtml(id)}</div>
+      </div>
     </div>
     <form class="replybar" id="reply-form">
+      <div class="reply-target-wrap" id="reply-target-wrap" inert aria-hidden="true">
+        <div class="reply-target" id="reply-target"></div>
+      </div>
       <input class="field" name="reply" type="text" maxlength="300" placeholder="Write a reply" autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="true" enterkeyhint="send" aria-autocomplete="none" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" aria-label="Write a reply">
       <button class="send" type="submit" aria-label="Send reply">${icon('arrow-up')}</button>
     </form>
-  `, { cls: 'detail-layer', descriptor: { type: 'post', id } });
+  `, {
+    cls: 'detail-layer',
+    descriptor: { type: 'post', id },
+    onClose() {
+      for (const key of threadShown.keys()) if (key.startsWith(id + ':')) threadShown.delete(key);
+    }
+  });
 
   const form = $('#reply-form', entry.el);
+  const input = form.querySelector('input');
+  const target = $('#reply-target', entry.el);
+  const targetWrap = $('#reply-target-wrap', entry.el);
+  const repliesEl = $('#detail-replies', entry.el);
+  const REPLY_ROW = 48; // chip row height plus its 8px gap
+
   entry.capture = () => {
-    const value = form.querySelector('input').value;
+    const value = input.value;
     return value.trim() ? { draft: value.slice(0, 300) } : {};
   };
+
+  entry.replyTo = null;
+
+  entry.clearReplyTo = (restore = false) => {
+    const scroller = entry.el.querySelector('.layer-body');
+    const session = entry.replyScrollSession;
+    const base = entry.replyScrollBase;
+    entry.replyTo = null;
+    entry.replyScrollBase = null;
+    entry.replyScrollSession = false;
+    entry.replyScrollUser = false;
+    if (scroller && entry.replyScrollWatch) {
+      scroller.removeEventListener('wheel', entry.replyScrollMark);
+      scroller.removeEventListener('touchmove', entry.replyScrollMark);
+      entry.replyScrollWatch = false;
+      entry.replyScrollMark = null;
+    }
+    form.classList.remove('has-target');
+    if (targetWrap) {
+      targetWrap.inert = true;
+      targetWrap.setAttribute('aria-hidden', 'true');
+    }
+    if (restore && scroller && session && base != null) {
+      const max = scroller.scrollHeight - scroller.clientHeight;
+      scrollReplyTo(scroller, Math.max(0, Math.min(max, base)), 'close');
+    }
+    input.placeholder = 'Write a reply';
+    setTimeout(() => {
+      if (!entry.replyTo) target.innerHTML = '';
+    }, 220);
+  };
+
+  entry.setReplyTo = (replyId, focus = true) => {
+    const reply = replyById(id, replyId);
+    if (!reply) return;
+    const barNow = Math.round(form.getBoundingClientRect().height);
+    entry.replyBarFinal = barNow - (form.classList.contains('has-target') ? REPLY_ROW : 0) + REPLY_ROW;
+    entry.replyTo = reply;
+    const u = user(reply.userId);
+    target.innerHTML = `<span class="reply-chip">${av(u, 22)}<span class="reply-chip-text">Replying to <b>@${esc(u.handle)}</b></span><button class="reply-cancel" type="button" data-act="reply-cancel" aria-label="Cancel reply">${icon('x')}</button></span>`;
+    hydrate(target);
+    if (targetWrap) {
+      targetWrap.inert = false;
+      targetWrap.setAttribute('aria-hidden', 'false');
+    }
+    form.classList.add('has-target');
+    document.documentElement.style.setProperty('--composer-height', entry.replyBarFinal + 'px');
+    input.placeholder = `Reply to @${u.handle}`;
+    if (focus) input.focus({ preventScroll: true });
+    clearTimeout(replyRevealTimer);
+    replyRevealTimer = setTimeout(() => {
+      if (!keyboardTargetLift) followReplyTarget(0);
+    }, 320);
+    if (currentKeyboardHeight > 0) {
+      requestAnimationFrame(() => {
+        if (entry.replyTo) followReplyTarget(keyboardTargetLift);
+      });
+    }
+  };
+
+  entry.focusReplyInput = () => input.focus({ preventScroll: true });
+
+  const drawReplies = () => {
+    repliesEl.innerHTML = repliesHtml(id);
+    hydrate(repliesEl);
+    scheduleScrollbar();
+  };
+  entry.refreshReplies = drawReplies;
+
+  repliesEl.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const body = e.target.closest('.reply-body');
+    if (!body || !repliesEl.contains(body)) return;
+    e.preventDefault();
+    focusReplyTarget(id, body.dataset.id);
+  });
+
   form.addEventListener('submit', (e) => {
     e.preventDefault();
-    const input = form.querySelector('input');
     const text = input.value.trim();
     if (!text) return;
-    const reply = { id: uid('r'), userId: 'me', ts: Date.now(), text };
+    const reply = { id: uid('r'), userId: 'me', ts: Date.now(), text, likes: 0, parentId: entry.replyTo ? entry.replyTo.id : null };
     if (!state.replies[id]) state.replies[id] = [];
     state.replies[id].push(reply);
-    save();
-    $('#detail-replies', entry.el).insertAdjacentHTML('beforeend', replyHtml(reply));
+    if (reply.parentId) {
+      const rootId = replyRootId(id, reply.id);
+      if (rootId) threadShown.set(threadKey(id, rootId), 9999);
+    }
+    entry.clearReplyTo();
     input.value = '';
+    save();
+    drawReplies();
     updatePostUI(id);
     refreshCollectionLayers('comments');
-    const body = $('#detail-body', entry.el);
-    body.scrollTop = body.scrollHeight;
+    const node = repliesEl.querySelector(`[data-reply="${reply.id}"]`);
+    if (node) requestAnimationFrame(() => node.scrollIntoView({ block: 'nearest' }));
   });
+
+  return entry;
 }
 
 /* ------------------------------------------------------------------ chat thread */
@@ -4533,7 +5258,8 @@ function applyTheme() {
 
 const viewEl = (name) => $('#view-' + name);
 
-const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const reducedQuery = matchMedia('(prefers-reduced-motion: reduce)');
+const reducedMotion = () => reducedQuery.matches;
 
 function swapIn(el) {
   if (!el || reducedMotion()) return;
@@ -4772,6 +5498,74 @@ function bindEvents() {
     }
   });
 
+  let holdTimer = 0;
+  let holdOrigin = null;
+  let holdReply = null;
+  let holdFired = false;
+
+  const cancelHold = () => {
+    if (holdTimer) clearTimeout(holdTimer);
+    holdTimer = 0;
+    holdOrigin = null;
+    holdReply = null;
+  };
+
+  const swallowNextClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  document.addEventListener('contextmenu', (e) => {
+    if (matchMedia('(pointer: coarse)').matches && e.target.closest && e.target.closest('.reply-body, .comment-item')) e.preventDefault();
+  });
+
+  document.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (e.target.closest && e.target.closest('.reply-act, .reply-acts, .comment-acts, .action-sheet')) return;
+    const body = e.target.closest && e.target.closest('.reply-body');
+    const item = body ? null : (e.target.closest && e.target.closest('.comment-item'));
+    const holder = body || item;
+    if (!holder) return;
+    const postId = holder.dataset.post;
+    const replyId = body ? holder.dataset.id : holder.dataset.reply;
+    const reply = replyById(postId, replyId);
+    if (!reply || reply.userId !== 'me') return;
+    cancelHold();
+    holdFired = false;
+    holdOrigin = { x: e.clientX, y: e.clientY };
+    holdReply = { postId, replyId };
+    holdTimer = setTimeout(() => {
+      holdTimer = 0;
+      holdFired = true;
+      const target = holdReply;
+      holdOrigin = null;
+      holdReply = null;
+      if (!target) return;
+      const selection = window.getSelection();
+      if (selection) selection.removeAllRanges();
+      openCommentMenu(target.postId, target.replyId);
+    }, 500);
+  }, { passive: true });
+
+  document.addEventListener('pointermove', (e) => {
+    if (!holdOrigin) return;
+    if (Math.hypot(e.clientX - holdOrigin.x, e.clientY - holdOrigin.y) > 8) cancelHold();
+  }, { passive: true });
+
+  document.addEventListener('pointerup', () => {
+    const fired = holdFired;
+    holdFired = false;
+    cancelHold();
+    if (!fired) return;
+    document.addEventListener('click', swallowNextClick, { capture: true, once: true });
+    setTimeout(() => document.removeEventListener('click', swallowNextClick, { capture: true }), 350);
+  }, { passive: true });
+
+  document.addEventListener('pointercancel', () => {
+    holdFired = false;
+    cancelHold();
+  }, { passive: true });
+
   document.addEventListener('click', (e) => {
     const el = e.target.closest('[data-act]');
     if (!el || el.closest('.layer.closing')) return;
@@ -4811,8 +5605,28 @@ function bindEvents() {
         break;
       }
       case 'replyfocus': {
-        const input = el.closest('.layer') && el.closest('.layer').querySelector('#reply-form .field');
+        const layer = el.closest('.layer');
+        const entry = layer && layers.find((e) => e.el === layer);
+        if (entry && entry.clearReplyTo) entry.clearReplyTo(true);
+        const input = layer && layer.querySelector('#reply-form .field');
         if (input) input.focus();
+        break;
+      }
+      case 'reply-like': toggleReplyLike(el.dataset.post, id, el); break;
+      case 'reply-to': focusReplyTarget(el.dataset.post, id); break;
+      case 'thread-open': openThread(el.dataset.post, el.dataset.root); break;
+      case 'thread-collapse': collapseThread(el.dataset.post, el.dataset.root); break;
+      case 'thread-more': moreThread(el.dataset.post, el.dataset.root); break;
+      case 'comment-menu-delete': showCommentMenuView(el.closest('.action-sheet'), 'confirm'); break;
+      case 'comment-menu-back': showCommentMenuView(el.closest('.action-sheet'), 'actions'); break;
+      case 'comment-menu-confirm':
+        deleteReply(el.dataset.post, id);
+        if (layers.length) history.back();
+        break;
+      case 'reply-cancel': {
+        const layer = el.closest('.layer');
+        const entry = layers.find((e) => e.el === layer);
+        if (entry && entry.clearReplyTo) entry.clearReplyTo(true);
         break;
       }
       case 'explore-more': {
@@ -4855,6 +5669,13 @@ function bindEvents() {
   });
 
   addEventListener('popstate', (e) => {
+    if (currentKeyboardHeight > 0) {
+      const active = document.activeElement;
+      if (isTextInput(active) && active.blur) active.blur();
+      setKeyboardTarget(0);
+      try { history.pushState(navSnapshot(navIndex), ''); } catch (err) {}
+      return;
+    }
     const snap = e.state;
     if (!state.auth) {
       if (!snap || !snap.tab) showLogin();

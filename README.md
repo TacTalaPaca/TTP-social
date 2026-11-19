@@ -6,7 +6,7 @@ Koinara is a fast single-page app with four tabs: Feed, Explore, Chat, and Profi
 
 - Live demo: https://tactalapaca.github.io/TTP-social/
 - Repository: https://github.com/TacTalaPaca/TTP-social
-- Version: 1.8
+- Version: 1.9
 - License: PolyForm Noncommercial 1.0.0
 
 ## Features
@@ -14,8 +14,8 @@ Koinara is a fast single-page app with four tabs: Feed, Explore, Chat, and Profi
 - Plain HTML, CSS, and JavaScript. No build step.
 - Works from `file://` and over HTTP.
 - Light and dark themes.
-- Local accounts, posts, replies, chats, follows, saves, and likes.
-- A larger local demo database: 28 accounts, 121 posts, and 138 comments.
+- Local accounts, posts, threaded comments, chats, follows, saves, and likes.
+- A larger local demo database: 28 accounts, 121 posts, and 339 comments.
 - Curated Explore with trending tags, suggested people, a ranked discover feed, and recent photos.
 - Search by text, #tag, or @handle with ranked, paginated results.
 - Locally compressed AVIF uploads with a full-screen crop editor. Crops are baked into new AVIF files on publish and Save.
@@ -24,8 +24,10 @@ Koinara is a fast single-page app with four tabs: Feed, Explore, Chat, and Profi
 - Pinch-to-zoom on post photos with elastic return.
 - Profile photos open in a zoomable lightbox with a tap-anywhere close.
 - Mobile gestures, keyboard navigation, and installable PWA support.
+- Native-like on-screen keyboard handling for comment, chat, and compose bars on Android and iOS.
 - Standalone installed app with a neutral launch surface; browser system UI follows the theme.
 - Cross-platform icons, including maskable and monochrome Android variants and an Apple touch icon.
+- Tap-to-reply threads with expand, collapse, and show more, comment likes with counts, and press-and-hold delete for your own comments.
 - Exact unread count pills in chat rows, including a 137-message conversation.
 - Offline shell and media cache.
 

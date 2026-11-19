@@ -184,29 +184,31 @@ function seedState() {
 
   const replies = {
     p1: [
-      { id: 'r1', userId: 'jules', ts: t(4), text: `This is the whole job.` },
-      { id: 'r2', userId: 'lena', ts: t(3), text: `Stealing this for a talk slide.` }
+      { id: 'r1', userId: 'jules', ts: t(4), likes: 6, text: `This is the whole job.` },
+      { id: 'r2', userId: 'lena', ts: t(3), likes: 3, text: `Stealing this for a talk slide.` }
     ],
-    p2: [{ id: 'r3', userId: 'noor', ts: t(15), text: `This light.` }],
+    p2: [{ id: 'r3', userId: 'noor', ts: t(15), likes: 4, text: `This light.` }],
     p3: [
-      { id: 'r4', userId: 'me', ts: t(30), text: `The book changes because you do.` },
-      { id: 'r5', userId: 'mae', ts: t(28), text: `Exactly.` }
+      { id: 'r4', userId: 'me', ts: t(30), likes: 9, text: `The book changes because you do.` },
+      { id: 'r5', userId: 'mae', ts: t(28), likes: 2, text: `Exactly.` }
     ],
-    p4: [{ id: 'r6', userId: 'sam', ts: t(48), text: `The best commits are mostly minus signs.` }],
-    p7: [{ id: 'r7', userId: 'ana', ts: t(150), text: `The manager has earned it.` }],
-    p10: [{ id: 'r8', userId: 'kenji', ts: t(285), text: `The second one.` }],
-    p12: [{ id: 'r9', userId: 'noor', ts: t(460), text: `Design out the wait, not the feedback.` }],
-    p19: [{ id: 'r10', userId: 'mae', ts: t(1900), text: `That is my ideal afternoon.` }],
-    p20: [{ id: 'r11', userId: 'sam', ts: t(2100), text: `Stopping is underrated.` }],
-    p24: [{ id: 'r12', userId: 'mae', ts: t(4300), text: `Two years for one arrow. Worth it.` }],
-    p31: [{ id: 'r13', userId: 'noor', ts: t(8900), text: `Everything is a draft. Yes.` }],
-    p33: [{ id: 'r14', userId: 'jules', ts: t(120), text: `Welcome. It is quiet here.` }]
+    p4: [{ id: 'r6', userId: 'sam', ts: t(48), likes: 5, text: `The best commits are mostly minus signs.` }],
+    p7: [{ id: 'r7', userId: 'ana', ts: t(150), likes: 3, text: `The manager has earned it.` }],
+    p10: [{ id: 'r8', userId: 'kenji', ts: t(285), likes: 1, text: `The second one.` }],
+    p12: [{ id: 'r9', userId: 'noor', ts: t(460), likes: 7, text: `Design out the wait, not the feedback.` }],
+    p19: [{ id: 'r10', userId: 'mae', ts: t(1900), likes: 2, text: `That is my ideal afternoon.` }],
+    p20: [{ id: 'r11', userId: 'sam', ts: t(2100), likes: 4, text: `Stopping is underrated.` }],
+    p24: [{ id: 'r12', userId: 'mae', ts: t(4300), likes: 6, text: `Two years for one arrow. Worth it.` }],
+    p31: [{ id: 'r13', userId: 'noor', ts: t(8900), likes: 3, text: `Everything is a draft. Yes.` }],
+    p33: [{ id: 'r14', userId: 'jules', ts: t(120), likes: 5, text: `Welcome. It is quiet here.` }]
   };
 
   let nextReply = 15;
-  const addReply = (postId, userId, min, text) => {
+  const addReply = (postId, userId, min, text, parentId = null, likes = 0) => {
     if (!replies[postId]) replies[postId] = [];
-    replies[postId].push({ id: 'r' + nextReply++, userId, ts: t(min), text });
+    const reply = { id: 'r' + nextReply++, userId, ts: t(min), text, parentId, likes };
+    replies[postId].push(reply);
+    return reply.id;
   };
   addReply('p54', 'mae', 1, `Train test is the real test.`);
   addReply('p54', 'jules', 0, `Everything still there, including the draft you forgot.`);
@@ -333,6 +335,255 @@ function seedState() {
   addReply('p121', 'mae', 22, `The third frame.`);
   addReply('p121', 'hana', 20, `The weather always does.`);
   addReply('p121', 'theo', 18, `That last frame is the whole walk.`);
+
+  // Threaded comment examples.
+  const toR1 = addReply('p1', 'me', 2, `The invisible part is the work.`, 'r1', 1);
+  addReply('p1', 'lena', 1, `Saving that one too.`, toR1, 0);
+  addReply('p3', 'noor', 25, `That is the best description of it.`, 'r4', 2);
+  addReply('p33', 'me', 110, `Thanks. Good to be here.`, 'r14', 1);
+  addReply('p1', 'mae', 6, `The details are the job.`, 'r1', 2);
+  addReply('p1', 'sam', 5, `And the reader feels it before they see it.`, 'r1', 1);
+  addReply('p1', 'mira', 5, `This is why I keep coming back here.`, 'r1', 3);
+  addReply('p1', 'theo', 4, `Quiet craft.`, 'r1', 0);
+  addReply('p1', 'clara', 4, `The best kind of invisible.`, 'r1', 2);
+  addReply('p1', 'ben', 3, `Like a good bassline.`, 'r1', 1);
+  addReply('p1', 'hana', 3, `You only notice it when it is gone.`, 'r1', 2);
+  addReply('p1', 'dario', 2, `Same with a good map.`, 'r1', 0);
+  addReply('p1', 'eli', 2, `Margins and kerning, same family.`, 'r1', 1);
+  addReply('p1', 'noor', 1, `Saving this thread.`, 'r1', 0);
+
+  // Large demo threads and comment counts.
+  const addThread = (postId, rootId, rows) => {
+    for (const [userId, min, text] of rows) addReply(postId, userId, min, text, rootId);
+  };
+
+  const p1More = [
+    ['priya', 3, `The spacing is doing the quiet work.`],
+    ['marco', 3, `Like a good loaf. Nothing to hide.`],
+    ['yuki', 2, `I keep looking at the gaps.`],
+    ['sofia', 2, `Small choices, long memory.`],
+    ['adam', 2, `This is a talk slide I would actually read.`],
+    ['leila', 1, `The pause between letters matters.`],
+    ['ravi', 1, `Good signage energy.`],
+    ['clara', 1, `Reading this twice.`],
+    ['iris', 1, `It sounds calm, somehow.`],
+    ['sana', 1, `The quiet version is the confident one.`],
+    ['jules', 1, `Exactly.`],
+    ['lena', 1, `Saving this for a workshop.`],
+  ];
+  addThread('p1', 'r1', p1More);
+
+  const p1Noor = addReply('p1', 'noor', 8, `The best interfaces disappear. The work does not.`, null, 26);
+  addThread('p1', p1Noor, [
+    ['mae', 7, `That is the whole brief.`],
+    ['sam', 7, `And the user never has to think about it.`],
+    ['tomas', 6, `Mostly deleting code, again.`],
+    ['noor', 6, `The invisible parts are the ones I trust.`],
+    ['mira', 5, `Like a good seam.`],
+    ['ben', 5, `You hear the room, not the gear.`],
+    ['clara', 4, `The book you forget you are holding.`],
+    ['hana', 4, `The frame you do not notice.`],
+    ['theo', 3, `The chair that just works.`],
+    ['ingrid', 3, `The repair you cannot see.`],
+    ['owen', 2, `My students would understand this.`],
+    ['sana', 2, `Good radio feels like this.`],
+    ['dario', 1, `A map you do not have to read twice.`],
+    ['eli', 1, `The margin that makes the page.`],
+    ['priya', 1, `Saving this for a critique.`],
+  ]);
+
+  const p1Sam = addReply('p1', 'sam', 6, `A feed that respects the scroll position is already better than most.`, null, 19);
+  addThread('p1', p1Sam, [
+    ['mae', 5, `Small mercy, big difference.`],
+    ['noor', 5, `And the back button.`],
+    ['jules', 4, `The scroll should not jump.`],
+    ['mira', 4, `Exactly why I stopped using the other one.`],
+    ['adam', 3, `The bar is on the floor.`],
+    ['clara', 2, `A quiet kind of respect.`],
+    ['lena', 2, `Please keep this.`],
+    ['tomas', 1, `Ship it.`],
+  ]);
+
+  addThread('p3', 'r4', [
+    ['noor', 29, `The sentences wait for you.`],
+    ['mae', 28, `Same book, different reader.`],
+    ['eli', 27, `That is the whole archive.`],
+    ['clara', 27, `Some books are time machines.`],
+    ['lena', 26, `The margins remember.`],
+    ['sofia', 26, `I keep the old notes inside.`],
+    ['hana', 25, `The light changes too.`],
+    ['jules', 25, `A reread is a conversation.`],
+    ['mira', 24, `Weather and memory.`],
+    ['ben', 24, `The voice in your head changes.`],
+    ['ravi', 23, `A map you remember differently.`],
+    ['iris', 23, `The pause before the next chapter.`],
+    ['sam', 22, `The bookmarks are a diary.`],
+    ['theo', 22, `The paper smells the same.`],
+    ['ingrid', 21, `The cover is softer now.`],
+    ['owen', 20, `My students say the same.`],
+    ['sana', 20, `The silence between sentences.`],
+    ['dario', 19, `A long way home.`],
+    ['priya', 18, `The good kind of reread.`],
+    ['clara', 17, `Adding this to the pile.`],
+  ]);
+
+  addThread('p33', 'r14', [
+    ['mae', 119, `Good to have you.`],
+    ['noor', 118, `Pull up a chair.`],
+    ['jules', 117, `The quiet is the point.`],
+    ['lena', 116, `Tea is on.`],
+    ['sam', 115, `No algorithms here.`],
+    ['mira', 114, `A good kind of slow.`],
+    ['theo', 113, `Stay a while.`],
+    ['clara', 112, `Bring a book.`],
+    ['hana', 111, `The light is good today.`],
+    ['ben', 110, `A little room tone.`],
+    ['ingrid', 109, `Soft landing.`],
+    ['owen', 108, `Welcome in.`],
+    ['sana', 107, `No rush.`],
+    ['dario', 106, `The long way is fine.`],
+    ['eli', 105, `The margins are friendly.`],
+  ]);
+  addReply('p33', 'mae', 100, `This is the right way to start.`);
+  addReply('p33', 'ana', 95, `The quiet builds.`);
+  addReply('p33', 'lena', 90, `A good first post.`);
+
+  const p12Thread = addReply('p12', 'noor', 475, `The wait you remove is better than the wait you decorate.`, null, 31);
+  addThread('p12', p12Thread, [
+    ['tomas', 474, `Design out the wait.`],
+    ['sam', 473, `The fastest state is no state.`],
+    ['adam', 472, `Cached before the click.`],
+    ['priya', 471, `The spinner is a confession.`],
+    ['mae', 470, `The page should feel already there.`],
+    ['noor', 469, `Anticipation is not a feature.`],
+    ['jules', 468, `The quiet load.`],
+    ['mira', 467, `A good queue hides itself.`],
+    ['theo', 466, `Measure the pause.`],
+    ['clara', 465, `The reader should not wait.`],
+    ['hana', 464, `The image is ready before the eye.`],
+    ['ben', 463, `No gap, no jingle.`],
+    ['iris', 462, `The sound of nothing loading.`],
+    ['sana', 461, `The best transition is none.`],
+    ['dario', 460, `A straight line with no lights.`],
+    ['eli', 459, `The archive is already open.`],
+    ['owen', 458, `My class would cheer.`],
+    ['ravi', 457, `The map is already drawn.`],
+    ['ingrid', 456, `The seam is invisible.`],
+    ['leila', 455, `The glaze is already dry.`],
+  ]);
+
+  const p54Thread = addReply('p54', 'mae', 4, `The train is the best test lab.`, null, 17);
+  addThread('p54', p54Thread, [
+    ['jules', 3, `No signal, no problem.`],
+    ['noor', 3, `The tunnel is the test.`],
+    ['sam', 2, `The draft is still there.`],
+    ['mira', 2, `Offline first, always.`],
+    ['tomas', 1, `The cache did its job.`],
+    ['clara', 1, `A good book and a long tunnel.`],
+    ['ben', 1, `The rhythm of the rails.`],
+    ['hana', 1, `The window light.`],
+    ['theo', 1, `The quiet car.`],
+    ['lena', 1, `The notebook.`],
+    ['eli', 1, `The margin notes.`],
+    ['priya', 1, `The seat by the window.`],
+    ['dario', 1, `The bike waits at the other end.`],
+    ['iris', 1, `The announcement fades out.`],
+  ]);
+  addReply('p54', 'ana', 2, `The best kind of commute.`);
+  addReply('p54', 'ravi', 2, `A moving office.`);
+  addReply('p54', 'sana', 1, `The announcement is the soundtrack.`);
+  addReply('p54', 'owen', 1, `The quiet carriage is a public good.`);
+
+  const p121Thread = addReply('p121', 'hana', 23, `Frame three is the one.`, null, 28);
+  addThread('p121', p121Thread, [
+    ['mae', 22, `The light on the water.`],
+    ['theo', 21, `The weather did the work.`],
+    ['clara', 20, `Five frames, one breath.`],
+    ['sana', 19, `I want to walk this.`],
+    ['jules', 18, `The coast keeps its own time.`],
+    ['noor', 17, `The rocks look soft.`],
+    ['mira', 16, `A good day for a jacket.`],
+    ['ben', 15, `The wind is in the audio.`],
+    ['iris', 14, `The silence between waves.`],
+    ['sam', 13, `The path is the point.`],
+    ['ravi', 12, `A map would miss this.`],
+    ['dario', 11, `The bike would love this.`],
+    ['eli', 10, `The margin of the sea.`],
+    ['owen', 9, `Bring the class.`],
+    ['lena', 8, `A poem in five frames.`],
+    ['priya', 7, `The third one, yes.`],
+    ['marco', 6, `A good walk ends with bread.`],
+    ['kenji', 5, `The salt on the lens.`],
+  ]);
+
+  const p100Thread = addReply('p100', 'mae', 1995, `The stop is the feature.`, null, 15);
+  addThread('p100', p100Thread, [
+    ['noor', 1994, `A feed with an ending.`],
+    ['jules', 1993, `The quiet after the scroll.`],
+    ['sam', 1992, `Enough is a design choice.`],
+    ['tomas', 1991, `The best button is the one you do not need.`],
+    ['clara', 1990, `A book has a last page.`],
+    ['mira', 1989, `The pause is the point.`],
+    ['theo', 1988, `Close the app.`],
+    ['ingrid', 1987, `Go outside.`],
+    ['owen', 1986, `The lesson ends.`],
+    ['sana', 1985, `The silence is the sign-off.`],
+    ['ben', 1984, `The last note.`],
+    ['eli', 1983, `The archive can wait.`],
+  ]);
+  addReply('p100', 'lena', 1982, `A feed that knows when to stop.`);
+  addReply('p100', 'ravi', 1981, `The bench at the end of the path.`);
+  addReply('p100', 'dario', 1980, `The long way home.`);
+  addReply('p100', 'priya', 1979, `The finish line is a feature.`);
+
+  const extraComments = [
+    ['p2', 'ana', 16, `The light is doing the work.`],
+    ['p2', 'theo', 14, `A good table and a free morning.`],
+    ['p5', 'leila', 76, `The green is a good accident.`],
+    ['p5', 'mira', 70, `Kiln surprises are the best kind.`],
+    ['p7', 'ingrid', 150, `The manager deserves a raise.`],
+    ['p7', 'owen', 140, `My desk plant is on its third laptop.`],
+    ['p10', 'ravi', 290, `Two corners, one city. Perfect.`],
+    ['p10', 'sam', 280, `The second frame has the better shadow.`],
+    ['p14', 'hana', 700, `The grain is the point.`],
+    ['p14', 'jules', 690, `That light leak earns its place.`],
+    ['p19', 'noor', 1880, `This is the whole mood.`],
+    ['p19', 'eli', 1870, `Saving this for a slow Sunday.`],
+    ['p20', 'mira', 2080, `Stopping is a skill.`],
+    ['p20', 'theo', 2070, `The bench is the plan.`],
+    ['p24', 'eli', 4280, `Two years, one arrow. Good.`],
+    ['p24', 'clara', 4270, `The patience shows.`],
+    ['p55', 'ben', 4, `The market has a rhythm.`],
+    ['p55', 'hana', 3, `I can hear the fishmonger from here.`],
+    ['p56', 'sam', 9, `Maps are opinions. Yes.`],
+    ['p56', 'dario', 8, `The view is the argument.`],
+    ['p57', 'lena', 15, `A whole weekend in one photo.`],
+    ['p57', 'theo', 14, `The tin is the hero.`],
+    ['p58', 'tomas', 21, `Empty space is doing the work.`],
+    ['p58', 'mae', 20, `Room to breathe.`],
+    ['p59', 'clara', 27, `The note is the story.`],
+    ['p59', 'sofia', 26, `Archives are patient.`],
+    ['p60', 'sana', 33, `The silence is the segment.`],
+    ['p60', 'ben', 32, `Eleven seconds is a long time.`],
+    ['p66', 'noor', 78, `Box 14 is the one.`],
+    ['p66', 'eli', 76, `The unsent letter wins.`],
+    ['p71', 'mira', 148, `Three years is a good starter.`],
+    ['p71', 'theo', 146, `The missed feeds are the flavor.`],
+    ['p78', 'ravi', 308, `Benches are infrastructure.`],
+    ['p78', 'priya', 306, `Shade is a public service.`],
+    ['p90', 'sam', 870, `Map the benches.`],
+    ['p90', 'ravi', 860, `Fewer than hoped, more than feared.`],
+  ];
+  for (const [postId, userId, min, text] of extraComments) addReply(postId, userId, min, text);
+
+  // Give the demo comments a varied set of base likes.
+  for (const list of Object.values(replies)) {
+    for (const reply of list) {
+      if (reply.likes) continue;
+      const n = Number(String(reply.id).replace(/\D/g, '')) || 0;
+      reply.likes = n % 11 === 0 ? 18 + (n % 17) : (n * 7) % 15;
+    }
+  }
 
   const chats = [
     { id: 'c1', userId: 'mae', lastRead: t(110), r: 0, replies: [`Deal. I'll bring the good pen.`, `Yes. Exactly that.`, `I'll send you the details tonight.`] },
@@ -555,6 +806,7 @@ function seedState() {
     messages,
     liked: ['p3', 'p12', 'p24', 'p19', 'p54', 'p55', 'p59', 'p63', 'p70', 'p75', 'p78', 'p81', 'p90', 'p94', 'p99', 'p100', 'p101', 'p105', 'p108', 'p110', 'p115', 'p118', 'p121'],
     bookmarked: ['p24', 'p12', 'p57', 'p66', 'p71', 'p79', 'p83', 'p91', 'p96', 'p99', 'p109', 'p114', 'p119', 'p121'],
+    likedReplies: ['r2', 'r9'],
     uploaded: {}
   };
 }

@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.9
+
+- Added comment likes with the save-style hairline ring and the count under the heart.
+- Added tap-to-reply threads with one indent and a "Replying to @handle" line. Removed the separate reply button.
+- Hid reply threads by default, with expand and collapse controls and a 10-at-a-time show more flow.
+- Added a press-and-hold comment options sheet with a delete action and a confirm step, replacing the inline delete and its layout shift.
+- Deleting a comment reparents its child replies instead of deleting the thread.
+- Updated the My comments collection with the same like action and long-press delete.
+- Expanded the seed to 339 comments, with several 20+ reply threads and varied comment like counts.
+- Added native-like composer keyboard handling: a locked shell, fixed transform-driven bars, Chromium VirtualKeyboard support, and an iOS visualViewport fallback with the post-blur viewport fix.
+- Made the composer close reliably when the keyboard hides with the field focused, moved it on a compositor transform with tuned keyboard curves, and made the Android back gesture close the keyboard before leaving the layer.
+- Scrolled the comment being answered above the bar with native smooth scrolling on open and a compositor track on close, with a slight trailing delay, and returned it without reserving extra bottom space. Cancelling the reply restores the previous scroll.
+- Replaced the plain reply label with a full-width reply banner with the target avatar, aligned dismiss button, and a short row and fade transition.
+- Bumped the service worker cache to `koinara-1.9`.
+
 ## 1.8
 
 - Expanded the local seed database to 27 accounts plus the demo user, 121 posts, 138 comments, 22 chats, 232 messages, 23 liked posts, and 14 bookmarked posts.

@@ -139,6 +139,20 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - Do not autofocus the composer on touch devices. The keyboard must not open during the entry transition.
 - Do not duplicate the add-photo control in the composer footer. The photo tile is the single entry point.
 
+## Comments
+
+- Comments live in `state.replies`, keyed by post id. A comment is text only.
+- Comments can be liked. Base like counts live on the reply; the current user's likes live in `state.likedReplies`.
+- A reply to another comment stores `parentId`. Replies are hidden by default and shown in batches of 10, with an expand or collapse control and a show more control. Indent replies once under the root, with a `Replying to @handle` line. Do not draw rails, tree lines, or connector lines.
+- Only the author can delete a comment. Deleting it reparents its direct children and never removes other people's replies.
+- Press and hold your own comment to open the comment options sheet. The sheet has a Delete action and a confirm step with a stable height. Do not put an inline delete confirmation in the comment row.
+- Tapping a comment body starts a reply. There is no separate reply button. Keep a keyboard path on the body.
+- The composer shows a full-width reply banner above the input, with the target avatar, handle, and dismiss button. Animate the banner row and banner with a short fade and lift. Cancel and submit both clear it. Cancelling also restores the previous thread scroll. The post-level Reply action clears it too.
+- The comment like button shows a heart with the count underneath, and uses the save-style hairline ring.
+- Comment actions are 44px targets on the right, centered vertically. Do not nest buttons inside buttons.
+- The My comments collection uses the same like action, and long-press opens the same comment options sheet. It has no reply button; open the post to reply.
+- Do not autofocus the composer during a layer entry transition when the post was just opened from the collection.
+
 ## Chat
 
 - Chat rows open a thread layer.
@@ -168,7 +182,14 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - Disable image dragging and the long-press callout.
 - Use `touch-action: manipulation` so double-tap zoom does not fight app gestures.
 - Mobile form controls are at least 16px so browsers do not auto-zoom.
-- The app shell follows `visualViewport` when the keyboard covers the layout viewport.
+- Lock the outer document. Do not resize or move the app shell when the keyboard opens.
+- Bottom composer bars are fixed and moved only with an inline `transform`, never by animating `bottom` or `height`. Write the transform to the bar, not to a root custom property: a root variable write forces a document-wide style pass every frame.
+- On Android, transition only the transform: `290ms cubic-bezier(.2, 0, 0, 1)` when the keyboard opens and `200ms cubic-bezier(.3, .3, .2, 1)` when it closes. Other platforms use `200ms` with `--ease`. Drop `will-change` when the motion settles. The close starts at roughly average speed and eases out, so it neither starts lazy nor ends with a hard stop.
+- Chromium uses the VirtualKeyboard geometry with `overlaysContent`, then the env probe, then the `visualViewport` fallback with a 60px threshold. A predicted height starts the motion on focus, and intermediate reports are ignored until that motion ends.
+- Treat a zero-height keyboard rect as closed. A zero env inset also closes the composer even when the field stays focused.
+- On an Android back gesture with the keyboard open, close the keyboard first and keep the layer. The predictive back preview itself is platform-controlled.
+- Scroll the comment being answered above the bar in step with the keyboard. Use native smooth scrolling on open and the compositor track on close, with a slightly longer duration and a small delay, so the thread follows the field instead of locking to it. Use the normal keyboard padding and clamp the reveal to the available space. Do not reserve extra padding or write `scrollTop` every frame. Return to the previous position on close. Do not use nearest `scrollIntoView` against the scroller, because it sits behind the bar.
+- Keep the chat at the bottom when it was near the bottom before the keyboard opened.
 - When the keyboard is open, the reply bar, chat composer, and compose footer sit directly above it.
 - Remove the safe-area bottom padding while typing.
 - Scroll the focused field into view inside its own scroll container.
@@ -179,7 +200,7 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 
 ## Data and persistence
 
-- Main state key: `koinara.v1`.
+- Main state key: `koinara.v1`. Liked comment ids live in `state.likedReplies`.
 - UI state key: `koinara.ui.v1`.
 - Media database: IndexedDB `koinara-media`, store `media`.
 - Persist the active tab, per-tab scroll, search text, profile tab, layer stack, drafts, and theme.
