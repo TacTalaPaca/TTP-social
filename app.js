@@ -3,7 +3,7 @@
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 const KEY = 'koinara.v1';
-const APP_VERSION = '1.6';
+const APP_VERSION = '1.7';
 const hadStateOnBoot = (() => { try { return localStorage.getItem(KEY) !== null; } catch (e) { return false; } })();
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = (p = 'x') => p + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -471,9 +471,9 @@ async function ensureAvatarData() {
 
 function imgTag(im, sizes) {
   if (im.s) {
-    return `<img src="assets/img/${im.s}-400.avif" srcset="assets/img/${im.s}-400.avif 400w, assets/img/${im.s}-800.avif 800w" sizes="${sizes}" width="${im.w}" height="${im.h}" alt="${esc(im.a || '')}" loading="lazy" decoding="async" data-fade style="aspect-ratio:${im.w}/${im.h}">`;
+    return `<img src="assets/img/${im.s}-400.avif" srcset="assets/img/${im.s}-400.avif 400w, assets/img/${im.s}-800.avif 800w" sizes="${sizes}" width="${im.w}" height="${im.h}" alt="${esc(im.a || '')}" loading="lazy" decoding="async" draggable="false" data-fade style="aspect-ratio:${im.w}/${im.h}">`;
   }
-  return `<img data-media="${im.m}" width="${im.w}" height="${im.h}" alt="${esc(im.a || '')}" loading="lazy" decoding="async" data-fade style="aspect-ratio:${im.w}/${im.h}">`;
+  return `<img data-media="${im.m}" width="${im.w}" height="${im.h}" alt="${esc(im.a || '')}" loading="lazy" decoding="async" draggable="false" data-fade style="aspect-ratio:${im.w}/${im.h}">`;
 }
 
 function photoImg(im, sizes, eager = false, ratioCss) {
@@ -952,13 +952,13 @@ function av(u, size = 36, cls = '') {
   if (!u) u = { id: 'x', name: '?' };
   const fallback = `<span class="av-fallback" aria-hidden="true">${initials(u.name)}</span>`;
   if (u.avatar && u.avatar.d) {
-    return `<span class="av has-img ${cls}" style="--av:${size}px">${fallback}<img src="${esc(u.avatar.d)}" alt="" width="${size}" height="${size}" decoding="async"></span>`;
+    return `<span class="av has-img ${cls}" style="--av:${size}px">${fallback}<img src="${esc(u.avatar.d)}" alt="" width="${size}" height="${size}" decoding="async" draggable="false"></span>`;
   }
   if (u.avatar && u.avatar.m) {
-    return `<span class="av has-img ${cls}" style="--av:${size}px">${fallback}<img data-media="${u.avatar.m}" alt="" width="${size}" height="${size}"></span>`;
+    return `<span class="av has-img ${cls}" style="--av:${size}px">${fallback}<img data-media="${u.avatar.m}" alt="" width="${size}" height="${size}" draggable="false"></span>`;
   }
   if (u.avatar && u.avatar.s) {
-    return `<span class="av has-img ${cls}" style="--av:${size}px">${fallback}<img src="assets/img/${esc(u.avatar.s)}.avif" alt="" width="${size}" height="${size}" loading="lazy" decoding="async"></span>`;
+    return `<span class="av has-img ${cls}" style="--av:${size}px">${fallback}<img src="assets/img/${esc(u.avatar.s)}.avif" alt="" width="${size}" height="${size}" loading="lazy" decoding="async" draggable="false"></span>`;
   }
   return `<span class="av t${tone(u.id)} ${cls}" style="--av:${size}px" aria-hidden="true">${initials(u.name)}</span>`;
 }
@@ -1039,13 +1039,15 @@ function profileHead(u, count, isMe) {
       </div>
       ${isMe
         ? `<div class="profile-actions">
-            <button class="btn ghost sm profile-edit" type="button" data-act="edit" aria-label="Edit profile"><span data-icon="pen"></span>Edit</button>
+            <button class="btn ghost sm profile-edit" type="button" data-act="edit" aria-label="Edit profile"><span data-icon="pen"></span></button>
             <button class="btn ghost sm profile-settings" type="button" data-act="settings" aria-label="Settings" title="Settings">${icon('settings')}</button>
           </div>`
         : `<button class="btn sm follow-btn${follows ? ' ghost' : ''}" type="button" data-act="follow" data-id="${u.id}" data-follow-btn="${u.id}" aria-pressed="${follows}" aria-label="${follows ? 'Unfollow' : 'Follow'} ${esc(u.name)}">${follows ? `${icon('check')}Following` : 'Follow'}</button>`}
     </div>
-    <p class="p-bio">${esc(u.bio)}</p>
-    <div class="p-joined">Joined ${esc(u.joined)}</div>
+    <div class="profile-about">
+      <p class="p-bio">${esc(u.bio)}</p>
+      <div class="p-joined">Joined ${esc(u.joined)}</div>
+    </div>
     <div class="stats" data-stats="${u.id}">
       <div class="stat"><b>${count}</b><span>Posts</span></div>
       <button class="stat" type="button" data-act="people" data-id="${u.id}" data-kind="followers" aria-label="View followers of ${esc(u.name)}"><b data-stat="followers">${fmt(followersOf(u.id).length)}</b><span>Followers</span></button>
@@ -3259,10 +3261,22 @@ function applyTheme() {
   const scheme = dark ? 'dark' : 'light';
   document.documentElement.dataset.theme = scheme;
   document.documentElement.style.colorScheme = scheme;
-  const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.content = dark ? '#0b0b0a' : '#f4f4f1';
+  document.documentElement.style.backgroundColor = dark ? '#0b0b0a' : '#f4f4f1';
+  const lightMeta = document.querySelector('meta[name="theme-color"][data-theme-color="light"]');
+  const darkMeta = document.querySelector('meta[name="theme-color"][data-theme-color="dark"]');
+  if (lightMeta && darkMeta) {
+    if (state.theme === 'auto') {
+      lightMeta.media = '(prefers-color-scheme: light)';
+      darkMeta.media = '(prefers-color-scheme: dark)';
+    } else {
+      lightMeta.media = dark ? 'not all' : 'all';
+      darkMeta.media = dark ? 'all' : 'not all';
+    }
+  }
   const schemeMeta = document.querySelector('meta[name="color-scheme"]');
   if (schemeMeta) schemeMeta.content = scheme;
+  const barMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+  if (barMeta) barMeta.content = dark ? 'black-translucent' : 'default';
 }
 
 const viewEl = (name) => $('#view-' + name);
@@ -3274,7 +3288,7 @@ function swapIn(el) {
   el.classList.remove('swap-in');
   void el.offsetWidth;
   el.classList.add('swap-in');
-  setTimeout(() => el.classList.remove('swap-in'), 210);
+  setTimeout(() => el.classList.remove('swap-in'), 340);
 }
 
 function switchTab(name, opts = {}) {
@@ -3464,6 +3478,16 @@ function installApp() {
 /* ------------------------------------------------------------------ events */
 
 function bindEvents() {
+  // Keep browser image and link menus out of the app shell.
+  document.addEventListener('contextmenu', (e) => {
+    const el = e.target.closest && e.target.closest('input, textarea, select, [contenteditable="true"], .msg, .reply-text, .p-bio, .post-text, .preview-text, .selectable');
+    if (el) return;
+    e.preventDefault();
+  });
+  document.addEventListener('dragstart', (e) => {
+    if (e.target.closest && e.target.closest('img')) e.preventDefault();
+  });
+
   $('#login-form').addEventListener('submit', (e) => {
     e.preventDefault();
     login($('#login-id').value);

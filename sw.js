@@ -1,5 +1,5 @@
 // Koinara service worker. Cache the whole demo for offline use.
-const CACHE = 'koinara-1.6';
+const CACHE = 'koinara-1.7';
 
 const CORE = [
   './',
@@ -13,6 +13,16 @@ const CORE = [
   './assets/fonts/OFL.txt',
   './assets/icons/LICENSE',
   './assets/icons/icon.svg',
+  './assets/icons/favicon.svg',
+  './assets/icons/favicon-32.png',
+  './assets/icons/favicon-16.png',
+  './assets/icons/icon-96.png',
+  './assets/icons/icon-192.png',
+  './assets/icons/icon-512.png',
+  './assets/icons/icon-1024.png',
+  './assets/icons/maskable-512.png',
+  './assets/icons/monochrome-512.png',
+  './assets/icons/apple-touch-icon.png',
   './assets/icons/mark.svg',
   './assets/img/p01-400.avif',
   './assets/img/p01-800.avif',

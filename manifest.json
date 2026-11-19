@@ -8,16 +8,11 @@
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "display_override": [
-    "standalone",
-    "minimal-ui"
-  ],
-  "orientation": "any",
+  "background_color": "#7f7f78",
   "categories": [
     "social",
     "news"
   ],
-  "prefer_related_applications": false,
   "launch_handler": {
     "client_mode": "navigate-existing"
   },
@@ -28,9 +23,9 @@
       "url": "./?compose",
       "icons": [
         {
-          "src": "assets/icons/icon.svg",
-          "sizes": "any",
-          "type": "image/svg+xml"
+          "src": "assets/icons/icon-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
         }
       ]
     },
@@ -40,14 +35,32 @@
       "url": "./?tab=explore",
       "icons": [
         {
-          "src": "assets/icons/icon.svg",
-          "sizes": "any",
-          "type": "image/svg+xml"
+          "src": "assets/icons/icon-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
         }
       ]
     }
   ],
   "icons": [
+    {
+      "src": "assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icons/icon-1024.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any"
+    },
     {
       "src": "assets/icons/icon.svg",
       "sizes": "any",
@@ -55,10 +68,16 @@
       "purpose": "any"
     },
     {
-      "src": "assets/icons/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "assets/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "maskable"
+    },
+    {
+      "src": "assets/icons/monochrome-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "monochrome"
     }
   ]
 }

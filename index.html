@@ -2,38 +2,54 @@
 <html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, shrink-to-fit=no, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Koinara</title>
 <meta name="description" content="A text-first social demo by TacTalaPaca.">
-<meta name="application-name" content="Koinara">
 <meta name="format-detection" content="telephone=no">
-<meta name="theme-color" content="#f4f4f1">
+<meta name="theme-color" content="#f4f4f1" media="(prefers-color-scheme: light)" data-theme-color="light">
+<meta name="theme-color" content="#0b0b0a" media="(prefers-color-scheme: dark)" data-theme-color="dark">
 <meta name="color-scheme" content="light dark">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="manifest" href="manifest.json">
 <script>
   // Set the theme before first paint so there is no flash.
   (function () {
     try {
       var s = JSON.parse(localStorage.getItem('koinara.v1') || '{}');
-      var t = s.theme || 'auto';
-      var dark = t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+      var t = s.theme;
+      if (t !== 'light' && t !== 'dark') t = 'auto';
+      var dark = t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
       var scheme = dark ? 'dark' : 'light';
       document.documentElement.dataset.theme = scheme;
       document.documentElement.style.colorScheme = scheme;
+      document.documentElement.style.backgroundColor = dark ? '#0b0b0a' : '#f4f4f1';
       if (s.auth) document.documentElement.classList.add('authed');
-      var m = document.querySelector('meta[name="theme-color"]');
-      if (m) m.content = dark ? '#0b0b0a' : '#f4f4f1';
+      // Keep in sync with applyTheme() in app.js.
+      var lm = document.querySelector('meta[name="theme-color"][data-theme-color="light"]');
+      var dm = document.querySelector('meta[name="theme-color"][data-theme-color="dark"]');
+      if (lm && dm) {
+        if (t === 'auto') {
+          lm.media = '(prefers-color-scheme: light)';
+          dm.media = '(prefers-color-scheme: dark)';
+        } else {
+          lm.media = dark ? 'not all' : 'all';
+          dm.media = dark ? 'all' : 'not all';
+        }
+      }
       var cm = document.querySelector('meta[name="color-scheme"]');
       if (cm) cm.content = scheme;
+      var sb = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+      if (sb) sb.content = dark ? 'black-translucent' : 'default';
     } catch (e) {}
   })();
 </script>
-<link rel="icon" href="assets/icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/icons/favicon.svg" type="image/svg+xml">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="assets/icons/favicon-16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png">
 <link rel="mask-icon" href="assets/icons/mark.svg" color="#12120f">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Koinara">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="preload" href="assets/fonts/atkinson-hyperlegible-next.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="app.css">
 </head>
@@ -63,7 +79,7 @@
             <button class="textbtn" type="button" id="demo-btn">Use demo account</button>
           </form>
           <div class="login-foot" aria-hidden="true">
-            <span>Offline ready</span><i></i><span data-version>V1.6</span>
+            <span>Offline ready</span><i></i><span data-version>V1.7</span>
           </div>
         </div>
       </div>

@@ -6,7 +6,7 @@ Koinara is a fast single-page app with four tabs: Feed, Explore, Chat, and Profi
 
 - Live demo: https://tactalapaca.github.io/TTP-social/
 - Repository: https://github.com/TacTalaPaca/TTP-social
-- Version: 1.6
+- Version: 1.7
 - License: PolyForm Noncommercial 1.0.0
 
 ## Features
@@ -20,7 +20,8 @@ Koinara is a fast single-page app with four tabs: Feed, Explore, Chat, and Profi
 - One-photo-per-swipe carousels.
 - Pinch-to-zoom on post photos with elastic return.
 - Mobile gestures, keyboard navigation, and installable PWA support.
-- Standalone installed app with theme-aware system bars.
+- Standalone installed app with a neutral launch surface; browser system UI follows the theme.
+- Cross-platform icons, including maskable and monochrome Android variants and an Apple touch icon.
 - Offline shell and media cache.
 
 ## Run locally
@@ -38,6 +39,8 @@ Local development disables the service worker on `localhost`, `127.0.0.1`, `[::1
 ## Install
 
 Koinara is a PWA. Install it from the browser menu, or use the Install app row in Settings. Installation requires HTTPS or localhost.
+
+Chrome's installed shortcut carries a small Chrome badge. Removing it requires a packaged Trusted Web Activity.
 
 ## Data
 
@@ -63,4 +66,5 @@ Required Notice: Copyright TacTalaPaca (https://github.com/TacTalaPaca)
 
 - Typeface: Atkinson Hyperlegible Next, SIL Open Font License 1.1. See `assets/fonts/OFL.txt`.
 - Icons: Lucide, ISC License. See `assets/icons/LICENSE`.
+- Brand mark and app icon: TacTalaPaca.
 - Demo photos are bundled for demonstration.

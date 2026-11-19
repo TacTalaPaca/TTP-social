@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.7
+
+- Reworked the mobile profile header: icon-only Edit and Settings buttons split above the stats, a bordered bio box with the join date, and tighter vertical spacing.
+- Made profile tab changes animate only the list, with a 300ms fade and a 16px lift.
+- Added press feedback to profile stats, profile tabs, and small controls, and kept hover styles on hover-capable devices only.
+- Unified resting borders on the quiet line token and moved hover, focus, and press borders to the stronger token.
+- Gave avatars, post photos, grids, and the brand mark the same 9px corner radius as buttons and panels.
+- Stopped image long-press menus, image drag, and browser context menus outside text fields.
+- Removed the static manifest `theme_color` and kept only a neutral launch `background_color`, so the manifest cannot override the dynamic theme-color metas.
+- Replaced the stroked mark with the new filled K across the login, favicon, and app icons.
+- Added a pre-paint dark background and an iOS translucent status bar in dark mode.
+- Scoped the theme-color metas by system preference and manual theme, matched to the bottom surface.
+- Rebuilt the app icons with separate any, maskable, monochrome, Apple touch, shortcut, and favicon assets.
+- Scoped hover effects to hover-capable devices. Post action icons have no pressed color change on touch and a desktop-only hover.
+- Kept `viewport-fit=cover` and safe-area spacing for Chrome's edge-to-edge rollout in installed PWAs.
+- Removed duplicate and unused CSS, icon, and metadata entries.
+- Added the new icon assets to the service worker cache.
+- Updated the service worker cache to `koinara-1.7`.
+
 ## 1.6
 
 - Removed the mobile feed top bar. New post is now a quiet centered button in the tab bar.

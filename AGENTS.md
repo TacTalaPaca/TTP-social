@@ -37,16 +37,17 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - Monochrome, calm, and minimal. Use the existing light and dark tokens.
 - Typeface: Atkinson Hyperlegible Next, bundled locally.
 - Icons: the bundled Lucide subset, stroke width 2.25. Do not add a second icon set.
-- The brand mark is the custom broken-K SVG with square cuts and a 2.75 stroke. The sidebar uses the text wordmark only.
+- The brand mark is the custom filled K with square cuts and a diagonal split. Use the same path in `mark.svg` and the icon sources; do not redraw it. The sidebar uses the text wordmark only.
 - The mobile unread dot sits at the optical center of the chat bubble, not the center of the icon box.
-- The app icon is a single SVG. Do not add PNG icon variants.
+- The app icon sources are the normal, maskable, and monochrome SVGs in `assets/icons`. Commit the PNG exports so Android, iOS, and PWABuilder can use them. Keep the maskable mark inside the central 80% safe circle with a full-bleed background. Do not use transparency for the normal or Apple icons.
 - The sidebar brand is a centered two-line lockup. The wordmark and byline share the same width.
+- Avatars, post photos, grids, and the brand mark use the same corner radius as buttons and panels. Do not give avatars or logos their own circular or percentage radius.
 - Keep margins equal and spacing consistent. Use the `--gutter` token.
-- Use only slight radii on straight elements. Do not turn the interface into pills and bubbles.
+- Use one shared corner radius from `--r` on straight elements. Pills are reserved for the tab bar and mobile tabs.
 - Do not add page-title bars. Headers belong to layers only.
 - Keep the branding small: `koinara` and `by TacTalaPaca`.
 - Do not restore the removed tagline.
-- The login screen has no cover image. It uses the circular K mark and ring.
+- The login screen has no cover image. It uses the dark rounded-square tile with the light K and the ring. Keep that tile dark in both themes.
 - The settings gear belongs in the profile header next to Edit.
 - The desktop layout uses a left sidebar and one middle column. There is no right rail.
 - The mobile layout uses a floating tab bar and a distinct touch experience.
@@ -54,14 +55,17 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - The sidebar wordmark is static, not a link. Keep the wordmark and byline centered and equal in width.
 - Desktop sidebar tabs use a subtle border and 9px vertical gaps.
 - Mobile tab selection uses one short shared fade for icon, label, and background. Do not stagger them or animate the icon separately.
-- Profile tab changes animate only the list below the tabs. Never move or fade the profile header or the tabs.
+- Profile tab changes animate only the list below the tabs, with a 300ms fade and a 16px lift. Never move or fade the profile header or the tabs.
 - Keep browser and password-manager autofill buttons out of search, comment, and profile fields.
-- Hover effects only on devices that can hover. Use the 120ms shared easing for hover transitions. Touch devices get active feedback instead.
-- Clear hover styles on `(hover: none)` and coarse pointers so highlights do not stick after a tap.
+- Hover effects only on devices that can hover. Use the 120ms shared easing for hover transitions. Touch devices get active feedback on navigation controls. Post action icons (like, reply, save, share) never change color or opacity on press, and icon-only actions never get hover styling on touch.
+- Scope hover rules with `@media (any-hover: hover)` instead of undoing them with a touch reset.
 - The Chromium scrollbar is a thin overlay that takes no layout space. Firefox keeps its native thin scrollbar.
-- Keep one manifest in standalone mode. Do not set manifest system bar colors or add manifest variants.
-- Android Chrome PWAs cannot make the system navigation bar transparent. Use the theme-color and color-scheme metas so the system bars follow the active theme.
-- Keep the color-scheme meta and the root color scheme in sync with the selected theme for browser mode.
+- Keep one manifest in standalone mode. Do not set manifest `theme_color`. Set `background_color` to the neutral launch surface only.
+- Never add a single static `theme-color` fallback. It can override the dynamic meta and defeat the theme sync.
+- Keep two `theme-color` metas scoped by `prefers-color-scheme`. For a manual theme, force one with `media="all"` and disable the other with `media="not all"`. The browser chooses the runtime color. Match it to the bottom edge surface, and keep the `color-scheme` meta and root color scheme in sync.
+- A single manifest cannot follow the in-app theme. Accept that the installed system bar may be fixed at install time. Where a surface cannot be dynamic, use the neutral launch color instead of a theme fallback.
+- Android Chrome PWAs cannot make the system navigation bar transparent. Keep the safe-area bottom padding so gesture or transparent bars never overlap content.
+- The Chrome WebAPK badge on an installed icon is platform-controlled. Do not promise to remove it from the manifest; only a packaged TWA can do that.
 - First and last rows in every list get a divider. Dividers stay quiet and consistent.
 
 ## Navigation and layers
@@ -100,7 +104,7 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - Action order is Like, Reply, Save, Share.
 - Action icons are large and clearly defined. Do not put pill or rounded backgrounds behind them.
 - Do not scale the like or save icon.
-- Do not add a background-color transition to the like or save buttons.
+- Do not add a background-color transition to the like or save buttons. Do not add a pressed color or opacity change to Like, Reply, Save, or Share on touch.
 - Like uses a clipped radial wave across the post, a hairline ring above the side panel, and a centered heart on the photo.
 - Save uses the same expanding hairline ring as Like, centered on the bookmark.
 - Media hearts use black or white based on the image luminance. Do not add a stroke or border.
@@ -232,4 +236,5 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - `sw.js`: offline cache.
 - `manifest.json`: install metadata.
 - `assets/`: bundled font, icons, and AVIF photos.
+- `assets/icons/`: the normal, maskable, and monochrome icon sources, PNG exports, brand mark, and Lucide license.
 - `CHANGELOG.md`: version history.
