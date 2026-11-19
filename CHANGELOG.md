@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.10
+
+- Kept the reply bar height stable while the keyboard is open, so cancelling or sending cannot shrink the scroll padding and clamp the thread.
+- Restored the previous thread scroll when a reply target is cancelled.
+- Revealed a new reply after the keyboard close settles, using the closed bar height, so sending no longer jumps.
+- Revealed a new reply target when the keyboard is already open.
+- Used native smooth scrolling for the open reveal and a trailing compositor track for the close.
+- Bumped the service worker cache to `koinara-1.10`.
+
 ## 1.9
 
 - Added comment likes with the save-style hairline ring and the count under the heart.

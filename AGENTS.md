@@ -148,6 +148,7 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - Press and hold your own comment to open the comment options sheet. The sheet has a Delete action and a confirm step with a stable height. Do not put an inline delete confirmation in the comment row.
 - Tapping a comment body starts a reply. There is no separate reply button. Keep a keyboard path on the body.
 - The composer shows a full-width reply banner above the input, with the target avatar, handle, and dismiss button. Animate the banner row and banner with a short fade and lift. Cancel and submit both clear it. Cancelling also restores the previous thread scroll. The post-level Reply action clears it too.
+- After sending, reveal the new comment above the bar once the keyboard close settles. Hold the composer and keyboard padding until that reveal lands. Do not use `scrollIntoView` for the new comment.
 - The comment like button shows a heart with the count underneath, and uses the save-style hairline ring.
 - Comment actions are 44px targets on the right, centered vertically. Do not nest buttons inside buttons.
 - The My comments collection uses the same like action, and long-press opens the same comment options sheet. It has no reply button; open the post to reply.

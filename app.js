@@ -3,7 +3,7 @@
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 const KEY = 'koinara.v1';
-const APP_VERSION = '1.9';
+const APP_VERSION = '1.10';
 const hadStateOnBoot = (() => { try { return localStorage.getItem(KEY) !== null; } catch (e) { return false; } })();
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = (p = 'x') => p + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -1703,6 +1703,7 @@ let keyboardSettleUntil = 0;
 let keyboardIdleTimer = 0;
 let keyboardPredictUntil = 0;
 let keyboardPadding = 0;
+let keyboardPaddingHold = false;
 let replyRevealTimer = 0;
 let vkHeight = 0;
 let fullHeight = window.innerHeight;
@@ -1730,9 +1731,10 @@ function applyComposerHeight() {
     root.style.removeProperty('--composer-height');
     return;
   }
-  // Keep the reply bar height stable while the keyboard is open. The chip
-  // collapsing must not shrink the scroll padding and clamp the thread.
-  if (currentKeyboardHeight > 0 && composer.classList.contains('replybar')) return;
+  // Keep the reply bar height stable while the keyboard is open or a post
+  // submit scroll is pending. The chip collapsing must not shrink the scroll
+  // padding and clamp the thread.
+  if ((keyboardPaddingHold || currentKeyboardHeight > 0) && composer.classList.contains('replybar')) return;
   const height = Math.round(composer.getBoundingClientRect().height);
   if (height > 0) {
     const next = height + 'px';
@@ -1923,11 +1925,11 @@ function scheduleKeyboardSettle() {
   keyboardIdleTimer = setTimeout(() => {
     const target = keyboardTargetLift;
     const padChanged = keyboardPadding !== target;
-    keyboardPadding = target;
     document.documentElement.classList.remove('kb-moving');
-    if (padChanged) {
-      document.documentElement.style.setProperty('--keyboard-px', target + 'px');
-      document.documentElement.style.setProperty('--keyboard-extra', target ? keyboardExtra + 'px' : '0px');
+    document.documentElement.style.setProperty('--keyboard-extra', target ? keyboardExtra + 'px' : '0px');
+    if (!(target === 0 && keyboardPaddingHold)) {
+      keyboardPadding = target;
+      if (padChanged) document.documentElement.style.setProperty('--keyboard-px', target + 'px');
     }
     if (target) {
       settleChatView();
@@ -3199,6 +3201,13 @@ function openPost(id) {
     descriptor: { type: 'post', id },
     onClose() {
       for (const key of threadShown.keys()) if (key.startsWith(id + ':')) threadShown.delete(key);
+      clearTimeout(entry.postSubmitTimer);
+      entry.postSubmit = null;
+      keyboardPaddingHold = false;
+      if (!currentKeyboardHeight) {
+        keyboardPadding = 0;
+        document.documentElement.style.setProperty('--keyboard-px', '0px');
+      }
     }
   });
 
@@ -3275,6 +3284,48 @@ function openPost(id) {
 
   entry.focusReplyInput = () => input.focus({ preventScroll: true });
 
+  const releasePostSubmit = (barH) => {
+    keyboardPaddingHold = false;
+    keyboardPadding = 0;
+    document.documentElement.style.setProperty('--keyboard-px', '0px');
+    if (barH) document.documentElement.style.setProperty('--composer-height', barH + 'px');
+  };
+
+  const revealPostReply = () => {
+    entry.postSubmitTimer = 0;
+    const pending = entry.postSubmit;
+    entry.postSubmit = null;
+    if (!pending || !entry.el.isConnected) {
+      keyboardPaddingHold = false;
+      return;
+    }
+    const scroller = entry.el.querySelector('.layer-body');
+    const node = repliesEl.querySelector(`.reply[data-reply="${pending.id}"]`);
+    if (!scroller || !node) {
+      keyboardPaddingHold = false;
+      return;
+    }
+    const open = currentKeyboardHeight > 0;
+    const barH = open
+      ? (entry.replyTo ? entry.replyBarFinal : Math.round(form.getBoundingClientRect().height))
+      : pending.closedBarH;
+    const barTop = open ? window.innerHeight - keyboardTargetLift - barH : window.innerHeight - barH;
+    const topEdge = scroller.getBoundingClientRect().top + 8;
+    const bottomEdge = barTop - 12;
+    const nr = node.getBoundingClientRect();
+    const delta = nr.bottom > bottomEdge ? nr.bottom - bottomEdge : (nr.top < topEdge ? nr.top - topEdge : 0);
+    let max = scroller.scrollHeight - scroller.clientHeight;
+    if (!open) max = Math.max(0, max - Math.max(0, keyboardPadding) - (pending.hadChip ? REPLY_ROW : 0));
+    const to = Math.max(0, Math.min(max, scroller.scrollTop + delta));
+    if (open) {
+      scrollReplyTo(scroller, to, 'open');
+      keyboardPaddingHold = false;
+    } else {
+      scrollReplyTo(scroller, to, 'close');
+      setTimeout(() => releasePostSubmit(pending.closedBarH), 300);
+    }
+  };
+
   const drawReplies = () => {
     repliesEl.innerHTML = repliesHtml(id);
     hydrate(repliesEl);
@@ -3301,14 +3352,19 @@ function openPost(id) {
       const rootId = replyRootId(id, reply.id);
       if (rootId) threadShown.set(threadKey(id, rootId), 9999);
     }
+    const hadChip = !!entry.replyTo;
+    const barNow = Math.round(form.getBoundingClientRect().height);
+    const closedBarH = (entry.replyBarFinal || barNow) - (hadChip ? REPLY_ROW : 0);
     entry.clearReplyTo();
     input.value = '';
     save();
     drawReplies();
     updatePostUI(id);
     refreshCollectionLayers('comments');
-    const node = repliesEl.querySelector(`[data-reply="${reply.id}"]`);
-    if (node) requestAnimationFrame(() => node.scrollIntoView({ block: 'nearest' }));
+    entry.postSubmit = { id: reply.id, hadChip, closedBarH };
+    keyboardPaddingHold = true;
+    clearTimeout(entry.postSubmitTimer);
+    entry.postSubmitTimer = setTimeout(revealPostReply, 320);
   });
 
   return entry;
