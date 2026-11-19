@@ -3,7 +3,7 @@
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 const KEY = 'koinara.v1';
-const APP_VERSION = '1.10';
+const APP_VERSION = '1.11';
 const hadStateOnBoot = (() => { try { return localStorage.getItem(KEY) !== null; } catch (e) { return false; } })();
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = (p = 'x') => p + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -1788,13 +1788,16 @@ function scrollReplyTo(scroller, to, mode = 'open') {
   }
   const android = document.documentElement.classList.contains('android');
   const close = mode === 'close';
+  const banner = mode === 'banner';
   // The thread trails the bar by a few milliseconds and takes a little
   // longer, so it follows the field instead of being welded to it.
-  const duration = android ? (close ? 240 : 340) : (close ? 220 : 260);
-  const delay = android ? 20 : 15;
-  const easing = android
-    ? (close ? 'cubic-bezier(.3, .3, .2, 1)' : 'cubic-bezier(.2, 0, 0, 1)')
-    : 'cubic-bezier(.22, .78, .2, 1)';
+  const duration = banner ? 180 : (android ? (close ? 240 : 340) : (close ? 220 : 260));
+  const delay = banner ? 0 : (android ? 20 : 15);
+  const easing = banner
+    ? 'cubic-bezier(.22, .78, .2, 1)'
+    : (android
+      ? (close ? 'cubic-bezier(.3, .3, .2, 1)' : 'cubic-bezier(.2, 0, 0, 1)')
+      : 'cubic-bezier(.22, .78, .2, 1)');
   if (replyScrollAnim) {
     replyScrollAnim.cancel();
     replyScrollAnim = null;
@@ -3229,6 +3232,7 @@ function openPost(id) {
     const scroller = entry.el.querySelector('.layer-body');
     const session = entry.replyScrollSession;
     const base = entry.replyScrollBase;
+    const hadChip = form.classList.contains('has-target');
     entry.replyTo = null;
     entry.replyScrollBase = null;
     entry.replyScrollSession = false;
@@ -3247,6 +3251,25 @@ function openPost(id) {
     if (restore && scroller && session && base != null) {
       const max = scroller.scrollHeight - scroller.clientHeight;
       scrollReplyTo(scroller, Math.max(0, Math.min(max, base)), 'close');
+    } else if (restore && hadChip && scroller && currentKeyboardHeight === 0) {
+      // With the keyboard closed, collapsing the banner removes 48px of
+      // scroll room. Animate the clamp instead of letting it snap.
+      keyboardPaddingHold = true;
+      const openMax = scroller.scrollHeight - scroller.clientHeight;
+      const closedMax = Math.max(0, openMax - REPLY_ROW);
+      const from = scroller.scrollTop;
+      const to = Math.min(from, closedMax);
+      if (to < from) {
+        scrollReplyTo(scroller, to, 'banner');
+        setTimeout(() => {
+          keyboardPaddingHold = false;
+          if (!entry.el.isConnected || form.classList.contains('has-target')) return;
+          const closedH = entry.replyBarFinal ? entry.replyBarFinal - REPLY_ROW : Math.round(form.getBoundingClientRect().height);
+          document.documentElement.style.setProperty('--composer-height', closedH + 'px');
+        }, 220);
+      } else {
+        keyboardPaddingHold = false;
+      }
     }
     input.placeholder = 'Write a reply';
     setTimeout(() => {

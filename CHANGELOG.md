@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.11
+
+- Animated the 48px composer height change when cancelling a reply banner at the bottom of a thread, so the comments no longer snap down.
+- Bumped the service worker cache to `koinara-1.11`.
+
 ## 1.10
 
 - Kept the reply bar height stable while the keyboard is open, so cancelling or sending cannot shrink the scroll padding and clamp the thread.
