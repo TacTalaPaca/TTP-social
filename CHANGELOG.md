@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.12
+
+- Added a filled counter triangle to the brand mark, inset from the right edge, and widened the diagonal gaps so every space reads evenly at every size.
+- Added a round badge version of the mark for the favicon and places that do not apply a corner radius.
+- Rebuilt the normal, maskable, monochrome, Apple touch, and round icon exports from the updated mark.
+- Matched the desktop login frame width to the main layout, so the page no longer resizes after signing in.
+- Added a faded dot matrix to the empty side strips on wide desktop screens.
+- Bumped the service worker cache to `koinara-1.12`.
+
 ## 1.11
 
 - Animated the 48px composer height change when cancelling a reply banner at the bottom of a thread, so the comments no longer snap down.

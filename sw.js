@@ -1,5 +1,5 @@
 // Koinara service worker. Cache the whole demo for offline use.
-const CACHE = 'koinara-1.11';
+const CACHE = 'koinara-1.12';
 
 const CORE = [
   './',
@@ -16,9 +16,9 @@ const CORE = [
   './assets/avif/wasm_avif.js',
   './assets/avif/wasm_avif_b64.js',
   './assets/icons/icon.svg',
-  './assets/icons/favicon.svg',
-  './assets/icons/favicon-32.png',
-  './assets/icons/favicon-16.png',
+  './assets/icons/round.svg',
+  './assets/icons/round-32.png',
+  './assets/icons/round-16.png',
   './assets/icons/icon-96.png',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png',

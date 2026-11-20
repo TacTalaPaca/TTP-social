@@ -3,7 +3,7 @@
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 const KEY = 'koinara.v1';
-const APP_VERSION = '1.11';
+const APP_VERSION = '1.12';
 const hadStateOnBoot = (() => { try { return localStorage.getItem(KEY) !== null; } catch (e) { return false; } })();
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = (p = 'x') => p + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);

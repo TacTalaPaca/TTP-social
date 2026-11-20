@@ -38,9 +38,9 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - Monochrome, calm, and minimal. Use the existing light and dark tokens.
 - Typeface: Atkinson Hyperlegible Next, bundled locally.
 - Icons: the bundled Lucide subset, stroke width 2.25. Do not add a second icon set.
-- The brand mark is the custom filled K with square cuts and a diagonal split. Use the same path in `mark.svg` and the icon sources; do not redraw it. The sidebar uses the text wordmark only.
+- The brand mark is the custom filled K with square cuts, an even diagonal split, and a filled counter triangle. Use the same path in `mark.svg`, `round.svg`, and the icon sources; do not draw a different K in any of them. The sidebar uses the text wordmark only.
 - The mobile unread dot sits at the optical center of the chat bubble, not the center of the icon box.
-- The app icon sources are the normal, maskable, and monochrome SVGs in `assets/icons`. Commit the PNG exports so Android, iOS, and PWABuilder can use them. Keep the maskable mark inside the central 80% safe circle with a full-bleed background. Do not use transparency for the normal or Apple icons.
+- The app icon sources are the normal, maskable, monochrome, and round SVGs in `assets/icons`. Commit the PNG exports so Android, iOS, and PWABuilder can use them. Keep the maskable mark inside the central 80% safe circle with a full-bleed background. Do not use transparency for the normal or Apple icons. Use the round badge where no corner radius is applied, such as the favicon.
 - The sidebar brand is a centered two-line lockup. The wordmark and byline share the same width.
 - Profile pictures are circles. Use a 50% radius on every avatar, avatar button, and the profile photo lightbox stage. Post photos, grids, buttons, panels, and the brand mark keep the shared `--r`.
 - Keep margins equal and spacing consistent. Use the `--gutter` token.
@@ -51,6 +51,7 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - The login screen has no cover image. It uses the dark rounded-square tile with the light K and the ring. Keep that tile dark in both themes.
 - The settings gear belongs in the profile header next to Edit.
 - The desktop layout uses a left sidebar and one middle column. There is no right rail.
+- On wide screens, the empty strips beside the frame carry a faded dot matrix that fades toward the frame. Do not fill them with content.
 - The mobile layout uses a floating tab bar and a distinct touch experience.
 - The mobile feed has no top bar. New post lives as a quiet square button in the center of the tab bar.
 - The sidebar wordmark is static, not a link. Keep the wordmark and byline centered and equal in width.
@@ -270,5 +271,5 @@ Koinara is a fast, text-first, local-only social demo by TacTalaPaca. It is a si
 - `manifest.json`: install metadata.
 - `assets/`: bundled font, icons, AVIF photos, and the local AVIF encoder.
 - `assets/avif/`: the bundled AVIF encoder and its license.
-- `assets/icons/`: the normal, maskable, and monochrome icon sources, PNG exports, brand mark, and Lucide license.
+- `assets/icons/`: the normal, maskable, monochrome, and round icon sources, PNG exports, brand mark, and Lucide license.
 - `CHANGELOG.md`: version history.

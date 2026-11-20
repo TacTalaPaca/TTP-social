@@ -2487,8 +2487,30 @@ html.custom-scroll .view { scrollbar-gutter: auto; }
   .view.tab-leave.back { animation-name: tabLeaveDeskBack; }
 
 
-  html:not(.authed) .frame { max-width: 560px; }
   .frame { max-width: 1040px; }
+
+  #app::before,
+  #app::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: max(0px, calc(50% - 520px));
+    pointer-events: none;
+    background-image: radial-gradient(circle, color-mix(in srgb, var(--fg) 22%, transparent) 1.3px, transparent 1.7px);
+    background-size: 18px 18px;
+    background-position: center top;
+  }
+  #app::before {
+    left: 0;
+    -webkit-mask-image: linear-gradient(to right, #000 0%, rgba(0, 0, 0, .8) 35%, transparent 100%);
+    mask-image: linear-gradient(to right, #000 0%, rgba(0, 0, 0, .8) 35%, transparent 100%);
+  }
+  #app::after {
+    right: 0;
+    -webkit-mask-image: linear-gradient(to left, #000 0%, rgba(0, 0, 0, .8) 35%, transparent 100%);
+    mask-image: linear-gradient(to left, #000 0%, rgba(0, 0, 0, .8) 35%, transparent 100%);
+  }
 
   .shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); }
   .views {
